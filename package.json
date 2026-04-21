@@ -1,0 +1,51 @@
+{
+  "name": "@fatecannotbealtered-/jira-cli",
+  "version": "1.0.0",
+  "description": "Full-featured Jira Data Center CLI for humans and AI Agents — manage issues, sprints, boards, epics, projects, users, and filters from your terminal",
+  "keywords": [
+    "jira",
+    "cli",
+    "atlassian",
+    "ai-agent",
+    "devtools",
+    "sprint",
+    "issue-tracker",
+    "openclaw"
+  ],
+  "author": "guosong6886@gmail.com",
+  "homepage": "https://github.com/fatecannotbealtered/jira-cli#readme",
+  "bugs": {
+    "url": "https://github.com/fatecannotbealtered/jira-cli/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fatecannotbealtered/jira-cli.git"
+  },
+  "license": "MIT",
+  "bin": {
+    "jira-cli": "scripts/run.js"
+  },
+  "scripts": {
+    "postinstall": "node scripts/install.js"
+  },
+  "files": [
+    "scripts/install.js",
+    "scripts/run.js",
+    "skills/",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "SECURITY.md"
+  ],
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ],
+  "engines": {
+    "node": ">=16"
+  }
+}
