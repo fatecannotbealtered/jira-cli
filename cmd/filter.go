@@ -27,6 +27,8 @@ func init() {
 	filterCmd.AddCommand(filterDeleteCmd)
 
 	filterRunCmd.Flags().Int("limit", 50, "Max results")
+	filterRunCmd.Flags().Bool("raw", false, "Return raw Jira API response (default: flat JSON)")
+	filterRunCmd.Flags().StringSlice("fields", nil, "Output only these fields (flat JSON only)")
 	filterCmd.AddCommand(filterRunCmd)
 
 	markWrite(filterCreateCmd)
@@ -163,7 +165,27 @@ var filterRunCmd = &cobra.Command{
 			return handleAPIError(err, jsonMode)
 		}
 		if jsonMode {
-			output.PrintJSON(result)
+			raw, _ := cmd.Flags().GetBool("raw")
+			fields, _ := cmd.Flags().GetStringSlice("fields")
+			if raw {
+				output.PrintJSON(result)
+				return nil
+			}
+			if len(fields) > 0 {
+				flat := toFlatIssues(result.Issues)
+				filtered := make([]map[string]any, len(flat))
+				for i := range flat {
+					filtered[i] = output.FilterFields(flat[i], fields)
+				}
+				output.PrintJSON(filtered)
+				return nil
+			}
+			output.PrintJSON(map[string]any{
+				"total":      result.Total,
+				"startAt":    result.StartAt,
+				"maxResults": result.MaxResults,
+				"issues":     toFlatIssues(result.Issues),
+			})
 			return nil
 		}
 		if len(result.Issues) == 0 {

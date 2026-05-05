@@ -8,15 +8,32 @@ import (
 	"time"
 )
 
-// parseTimeSpent parses a time string (e.g. "1h30m", "2h", "30m") into seconds.
+// parseTimeSpent parses a time string (e.g. "1w2d3h30m", "2h", "30m", "1d") into seconds.
+// Supports w (weeks), d (days), h (hours), m (minutes).
 func parseTimeSpent(timeStr string) (int, error) {
 	timeStr = strings.TrimSpace(timeStr)
 	if timeStr == "" {
 		return 0, fmt.Errorf("empty time string")
 	}
 
-	var hours, minutes int
+	var weeks, days, hours, minutes int
 	remaining := timeStr
+
+	if wIdx := strings.Index(remaining, "w"); wIdx >= 0 {
+		wPart := remaining[:wIdx]
+		if _, err := fmt.Sscanf(wPart, "%d", &weeks); err != nil {
+			return 0, fmt.Errorf("invalid weeks in %q: %w", timeStr, err)
+		}
+		remaining = remaining[wIdx+1:]
+	}
+
+	if dIdx := strings.Index(remaining, "d"); dIdx >= 0 {
+		dPart := remaining[:dIdx]
+		if _, err := fmt.Sscanf(dPart, "%d", &days); err != nil {
+			return 0, fmt.Errorf("invalid days in %q: %w", timeStr, err)
+		}
+		remaining = remaining[dIdx+1:]
+	}
 
 	if hIdx := strings.Index(remaining, "h"); hIdx >= 0 {
 		hPart := remaining[:hIdx]
@@ -33,11 +50,12 @@ func parseTimeSpent(timeStr string) (int, error) {
 		}
 	}
 
-	if hours == 0 && minutes == 0 {
+	total := weeks*5*8*3600 + days*8*3600 + hours*3600 + minutes*60
+	if total == 0 {
 		return 0, fmt.Errorf("could not parse time string %q", timeStr)
 	}
 
-	return hours*3600 + minutes*60, nil
+	return total, nil
 }
 
 // Get retrieves issue details.
@@ -399,8 +417,10 @@ func (a *IssueAPI) Search(jql string, opts SearchOptions) (*SearchResult, error)
 }
 
 // SearchAll executes a JQL search with automatic pagination.
+// It caps at 10,000 issues to prevent unbounded memory usage.
 func (a *IssueAPI) SearchAll(jql string, fields []string) ([]Issue, error) {
 	const pageSize = 100
+	const maxTotal = 10000
 	var allIssues []Issue
 	startAt := 0
 	for {
@@ -414,6 +434,9 @@ func (a *IssueAPI) SearchAll(jql string, fields []string) ([]Issue, error) {
 		}
 		allIssues = append(allIssues, result.Issues...)
 		if len(result.Issues) == 0 || startAt+len(result.Issues) >= result.Total {
+			break
+		}
+		if len(allIssues) >= maxTotal {
 			break
 		}
 		startAt += len(result.Issues)

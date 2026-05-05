@@ -72,11 +72,17 @@ jobs:
         with:
           go-version: "1.23"
 
+      - name: Extract release notes
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          sed -n "/^## \[${VERSION}\]/,/^## \[/p" CHANGELOG.md | sed '$ { /^## \[/d }' > release-notes.md
+          [ -s release-notes.md ] || cp CHANGELOG.md release-notes.md
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v7
         with:
           version: "~> v2"
-          args: release --clean --release-notes=CHANGELOG.md
+          args: release --clean --release-notes=release-notes.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

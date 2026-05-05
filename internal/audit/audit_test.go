@@ -119,6 +119,9 @@ func TestSanitizeArgs(t *testing.T) {
 		{"no token", []string{"--project", "TEST"}, []string{"--project", "TEST"}},
 		{"with --token", []string{"--token", "secret123", "--project", "TEST"}, []string{"--project", "TEST"}},
 		{"with -t", []string{"-t", "secret123", "arg1"}, []string{"arg1"}},
+		{"with --token=value", []string{"--token=secret123", "--project", "TEST"}, []string{"--project", "TEST"}},
+		{"with --TOKEN=value", []string{"--TOKEN=secret123", "arg1"}, []string{"arg1"}},
+		{"with --Token=value", []string{"--Token=mysecret", "arg1"}, []string{"arg1"}},
 		{"empty", nil, []string{}},
 	}
 	for _, tt := range tests {

@@ -94,7 +94,7 @@ var sprintListCmd = &cobra.Command{
 
 var sprintActiveCmd = &cobra.Command{
 	Use:   "active",
-	Short: "Show the active sprint for a board",
+	Short: "Show the active sprint(s) for a board",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client, _, err := newClient()
 		if err != nil {
@@ -113,33 +113,52 @@ var sprintActiveCmd = &cobra.Command{
 			output.Info("No active sprint found.")
 			return nil
 		}
-		sprint := sprints[0]
-		issues, err := client.Sprints.GetIssues(sprint.ID)
-		if err != nil {
-			return handleAPIError(err, jsonMode)
+
+		type sprintWithIssues struct {
+			Sprint api.Sprint  `json:"sprint"`
+			Issues []api.Issue `json:"issues"`
 		}
+		var results []sprintWithIssues
+		for _, sprint := range sprints {
+			issues, err := client.Sprints.GetIssues(sprint.ID)
+			if err != nil {
+				return handleAPIError(err, jsonMode)
+			}
+			results = append(results, sprintWithIssues{Sprint: sprint, Issues: issues})
+		}
+
 		if jsonMode {
 			raw, _ := cmd.Flags().GetBool("raw")
 			if raw {
-				output.PrintJSON(map[string]any{"sprint": sprint, "issues": issues})
+				output.PrintJSON(results)
 			} else {
-				output.PrintJSON(map[string]any{
-					"sprint": toFlatSprint(&sprint),
-					"issues": toFlatIssues(issues),
-				})
+				flat := make([]map[string]any, len(results))
+				for i, r := range results {
+					flat[i] = map[string]any{
+						"sprint": toFlatSprint(&r.Sprint),
+						"issues": toFlatIssues(r.Issues),
+					}
+				}
+				output.PrintJSON(flat)
 			}
 			return nil
 		}
-		fmt.Println()
-		output.Bold(fmt.Sprintf("  Sprint: %s (ID: %d)", sprint.Name, sprint.ID))
-		output.Gray(fmt.Sprintf("  State: %s  |  %s \u2192 %s", sprint.State, safeDate(sprint.StartDate), safeDate(sprint.EndDate)))
-		if sprint.Goal != "" {
-			output.Gray(fmt.Sprintf("  Goal: %s", sprint.Goal))
-		}
-		fmt.Println()
-		if len(issues) > 0 {
-			output.Bold(fmt.Sprintf("  Issues (%d)", len(issues)))
-			printIssueTable(issues)
+
+		for i, r := range results {
+			if i > 0 {
+				fmt.Println()
+			}
+			fmt.Println()
+			output.Bold(fmt.Sprintf("  Sprint: %s (ID: %d)", r.Sprint.Name, r.Sprint.ID))
+			output.Gray(fmt.Sprintf("  State: %s  |  %s \u2192 %s", r.Sprint.State, safeDate(r.Sprint.StartDate), safeDate(r.Sprint.EndDate)))
+			if r.Sprint.Goal != "" {
+				output.Gray(fmt.Sprintf("  Goal: %s", r.Sprint.Goal))
+			}
+			fmt.Println()
+			if len(r.Issues) > 0 {
+				output.Bold(fmt.Sprintf("  Issues (%d)", len(r.Issues)))
+				printIssueTable(r.Issues)
+			}
 		}
 		return nil
 	},

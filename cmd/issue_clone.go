@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/fatecannotbealtered/jira-cli/internal/api"
 	"github.com/fatecannotbealtered/jira-cli/internal/output"
@@ -39,10 +40,23 @@ var issueCloneCmd = &cobra.Command{
 
 		project, _ := cmd.Flags().GetString("project")
 		if project == "" {
-			for i, c := range sourceKey {
-				if c == '-' {
-					project = sourceKey[:i]
-					break
+			// Try to get project from the source issue's self URL or key
+			if source.Self != "" {
+				// Extract from self URL: .../rest/api/2/issue/PROJECT-123
+				for i := len(source.Self) - 1; i >= 0; i-- {
+					if source.Self[i] == '/' {
+						rest := source.Self[i+1:]
+						if dashIdx := strings.Index(rest, "-"); dashIdx > 0 {
+							project = rest[:dashIdx]
+						}
+						break
+					}
+				}
+			}
+			if project == "" {
+				// Fallback: parse from issue key
+				if dashIdx := strings.Index(sourceKey, "-"); dashIdx > 0 {
+					project = sourceKey[:dashIdx]
 				}
 			}
 		}

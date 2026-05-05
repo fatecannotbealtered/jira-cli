@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-05-06
+
+### Fixed
+
+- **Audit log `sanitizeArgs` now handles `--token=value` format** — previously `--token=secret` would be logged in plaintext.
+- **`SearchAll` capped at 10,000 issues** to prevent unbounded memory usage on large result sets.
+- **`sprint active` supports multiple active sprints** — previously only the first was returned.
+- **`issue clone` extracts project key from source issue** instead of scanning the issue key string for `-`.
+- **Removed empty `internal/api/compat.go`** file.
+
+### Added
+
+- **`filter run` supports `--raw` and `--fields`** flags, consistent with `search` and `issue list`.
+- **`board backlog` and `board epics` support `--limit`** flag (default 50, max 200).
+- **`issue watch`/`unwatch`/`vote`/`unvote` produce JSON output** with `--json` flag.
+- **`parseTimeSpent` supports `d` (days) and `w` (weeks)** units — `1d` = 8h, `1w` = 5d (Jira defaults).
+- **`make test` now runs `gofmt` and `go vet`** before unit tests.
+- **Release workflow extracts version-specific notes** from CHANGELOG.md for GitHub Release body.
+
 ## [1.0.0] - 2026-05-03
 
 Initial release of jira-cli for Jira Data Center.
@@ -39,5 +58,6 @@ Initial release of jira-cli for Jira Data Center.
 - SKILL.md with JSON output schemas, error codes, exit codes, and complete flag reference.
 - GitHub PR template for contributors.
 
-[Unreleased]: https://github.com/fatecannotbealtered/jira-cli/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/fatecannotbealtered/jira-cli/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/fatecannotbealtered/jira-cli/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/fatecannotbealtered/jira-cli/releases/tag/v1.0.0

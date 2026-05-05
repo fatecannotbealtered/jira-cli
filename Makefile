@@ -14,8 +14,8 @@ build:
 	@mkdir -p $(BIN_DIR)
 	go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/$(BINARY_NAME) $(CMD_PATH)
 
-## test: run all unit tests with race detection
-test:
+## test: check formatting, vet, and run all unit tests with race detection
+test: fmt vet
 	go test -race ./...
 
 ## vet: run static analysis

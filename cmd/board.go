@@ -23,10 +23,12 @@ func init() {
 	boardCmd.AddCommand(boardGetCmd)
 
 	boardBacklogCmd.Flags().Int("board", 0, "Board ID (required)")
+	boardBacklogCmd.Flags().Int("limit", 50, "Max results (1-200)")
 	boardCmd.AddCommand(boardBacklogCmd)
 
 	boardEpicsCmd.Flags().Int("board", 0, "Board ID (required)")
 	boardEpicsCmd.Flags().Bool("done", false, "Show only completed epics")
+	boardEpicsCmd.Flags().Int("limit", 50, "Max results (1-200)")
 	boardCmd.AddCommand(boardEpicsCmd)
 
 	boardSprintsCmd.Flags().Int("board", 0, "Board ID (required)")
@@ -117,6 +119,10 @@ var boardBacklogCmd = &cobra.Command{
 		if err != nil {
 			return handleAPIError(err, jsonMode)
 		}
+		limit, _ := cmd.Flags().GetInt("limit")
+		if limit > 0 && limit < len(issues) {
+			issues = issues[:limit]
+		}
 		if jsonMode {
 			output.PrintJSON(issues)
 			return nil
@@ -147,6 +153,10 @@ var boardEpicsCmd = &cobra.Command{
 		epics, err := client.Boards.GetEpics(boardID, done)
 		if err != nil {
 			return handleAPIError(err, jsonMode)
+		}
+		limit, _ := cmd.Flags().GetInt("limit")
+		if limit > 0 && limit < len(epics) {
+			epics = epics[:limit]
 		}
 		if jsonMode {
 			output.PrintJSON(epics)

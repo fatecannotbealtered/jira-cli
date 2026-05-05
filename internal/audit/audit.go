@@ -129,6 +129,10 @@ func sanitizeArgs(args []string) []string {
 			skip = true
 			continue
 		}
+		// Handle --token=value and --token=value forms
+		if strings.HasPrefix(lower, "--token=") {
+			continue
+		}
 		out = append(out, a)
 	}
 	return out

@@ -92,6 +92,10 @@ var issueWatchCmd = &cobra.Command{
 		if err := client.Issues.AddWatcher(args[0], myself.Name); err != nil {
 			return handleAPIError(err, jsonMode)
 		}
+		if jsonMode {
+			output.PrintJSON(map[string]string{"issueKey": args[0], "action": "watching"})
+			return nil
+		}
 		output.Success(fmt.Sprintf("Now watching %s", args[0]))
 		return nil
 	},
@@ -115,6 +119,10 @@ var issueUnwatchCmd = &cobra.Command{
 		}
 		if err := client.Issues.RemoveWatcher(args[0], myself.Name); err != nil {
 			return handleAPIError(err, jsonMode)
+		}
+		if jsonMode {
+			output.PrintJSON(map[string]string{"issueKey": args[0], "action": "unwatched"})
+			return nil
 		}
 		output.Success(fmt.Sprintf("Stopped watching %s", args[0]))
 		return nil
@@ -167,6 +175,10 @@ var issueVoteCmd = &cobra.Command{
 		if err := client.Issues.AddVote(args[0]); err != nil {
 			return handleAPIError(err, jsonMode)
 		}
+		if jsonMode {
+			output.PrintJSON(map[string]string{"issueKey": args[0], "action": "voted"})
+			return nil
+		}
 		output.Success(fmt.Sprintf("Voted for %s", args[0]))
 		return nil
 	},
@@ -186,6 +198,10 @@ var issueUnvoteCmd = &cobra.Command{
 		}
 		if err := client.Issues.RemoveVote(args[0]); err != nil {
 			return handleAPIError(err, jsonMode)
+		}
+		if jsonMode {
+			output.PrintJSON(map[string]string{"issueKey": args[0], "action": "unvoted"})
+			return nil
 		}
 		output.Success(fmt.Sprintf("Vote removed from %s", args[0]))
 		return nil
