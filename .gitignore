@@ -35,5 +35,8 @@ scripts/e2e.local.ps1
 # E2E test report (generated)
 scripts/e2e-report.csv
 
+# GoReleaser release notes (generated during CI)
+release-notes.md
+
 # Claude Code worktrees
 .claude/
