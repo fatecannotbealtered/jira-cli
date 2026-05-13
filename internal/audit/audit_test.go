@@ -116,12 +116,14 @@ func TestSanitizeArgs(t *testing.T) {
 		in   []string
 		want []string
 	}{
-		{"no token", []string{"--project", "TEST"}, []string{"--project", "TEST"}},
+		{"no sensitive args", []string{"--project", "TEST"}, []string{"--project", "TEST"}},
 		{"with --token", []string{"--token", "secret123", "--project", "TEST"}, []string{"--project", "TEST"}},
 		{"with -t", []string{"-t", "secret123", "arg1"}, []string{"arg1"}},
-		{"with --token=value", []string{"--token=secret123", "--project", "TEST"}, []string{"--project", "TEST"}},
-		{"with --TOKEN=value", []string{"--TOKEN=secret123", "arg1"}, []string{"arg1"}},
-		{"with --Token=value", []string{"--Token=mysecret", "arg1"}, []string{"arg1"}},
+		{"with --token=value (redacted)", []string{"--token=secret123", "--project", "TEST"}, []string{"--token=***", "--project", "TEST"}},
+		{"with --TOKEN=value (redacted)", []string{"--TOKEN=secret123", "arg1"}, []string{"--TOKEN=***", "arg1"}},
+		{"with -t=value (redacted)", []string{"-t=secret123", "arg1"}, []string{"-t=***", "arg1"}},
+		{"with --password (not sensitive - JDC PAT only)", []string{"--password", "secret", "arg1"}, []string{"--password", "secret", "arg1"}},
+		{"with --secret (not sensitive - JDC PAT only)", []string{"--secret", "secret", "arg1"}, []string{"--secret", "secret", "arg1"}},
 		{"empty", nil, []string{}},
 	}
 	for _, tt := range tests {

@@ -167,7 +167,11 @@ func (c *Client) doWithRetry(ctx context.Context, method, path string, body any)
 					wait = time.Duration(secs) * time.Second
 				}
 			}
-			time.Sleep(wait)
+			select {
+			case <-time.After(wait):
+			case <-ctx.Done():
+				return nil, 0, ctx.Err()
+			}
 			continue
 		}
 
@@ -177,7 +181,11 @@ func (c *Client) doWithRetry(ctx context.Context, method, path string, body any)
 				return nil, statusCode, c.parseError(statusCode, data)
 			}
 			wait := time.Duration(1<<uint(attempt)) * time.Second // 1s, 2s, 4s
-			time.Sleep(wait)
+			select {
+			case <-time.After(wait):
+			case <-ctx.Done():
+				return nil, 0, ctx.Err()
+			}
 			continue
 		}
 
@@ -264,10 +272,16 @@ func (c *Client) Delete(path string) error {
 }
 
 // Upload uploads a file attachment using multipart/form-data.
-func (c *Client) Upload(path, filePath string) ([]byte, error) {
+func (c *Client) Upload(ctx context.Context, path, filePath string) ([]byte, error) {
 	const maxRetries = 3
 
 	for attempt := 0; ; attempt++ {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+
 		f, err := os.Open(filePath)
 		if err != nil {
 			return nil, fmt.Errorf("opening file %s: %w", filePath, err)
@@ -288,7 +302,7 @@ func (c *Client) Upload(path, filePath string) ([]byte, error) {
 		_ = f.Close()
 		_ = w.Close()
 
-		req, err := http.NewRequest(http.MethodPost, c.host+path, &buf)
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.host+path, &buf)
 		if err != nil {
 			return nil, fmt.Errorf("creating upload request: %w", err)
 		}
@@ -325,7 +339,11 @@ func (c *Client) Upload(path, filePath string) ([]byte, error) {
 					wait = time.Duration(secs) * time.Second
 				}
 			}
-			time.Sleep(wait)
+			select {
+			case <-time.After(wait):
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
 			continue
 		}
 
@@ -334,7 +352,11 @@ func (c *Client) Upload(path, filePath string) ([]byte, error) {
 				return nil, c.parseError(statusCode, data)
 			}
 			wait := time.Duration(1<<uint(attempt)) * time.Second
-			time.Sleep(wait)
+			select {
+			case <-time.After(wait):
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
 			continue
 		}
 

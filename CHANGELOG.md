@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-05-14
+
+### Fixed
+
+- **Retry loop now respects context cancellation** — long-running API calls with rate limiting or server errors can now be interrupted by the caller.
+- **Upload retry loop now respects context cancellation** — file uploads honor context cancellation during retries.
+- **Token sanitization improved** — audit logging now handles `--token=value` format for all case variations (e.g., `--TOKEN=`, `--Token=`).
+- **Config file corruption detection** — invalid JSON in `~/.jira-cli/config.json` now returns an error instead of silently continuing with empty values.
+- **Timing attack prevention** — confirmation prompts use constant-time comparison to prevent timing-based information leakage.
+
+### Security
+
+- **Audit logging uses constant-time comparison** to prevent timing attacks on confirmation inputs.
+- **Sensitive flags aligned with JDC-only PAT authentication** — audit sanitization targets only `--token` and `-t` since this CLI uses PAT only, no password support.
+
 ## [1.0.1] - 2026-05-06
 
 ### Fixed
@@ -22,7 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`filter run` supports `--raw` and `--fields`** flags, consistent with `search` and `issue list`.
 - **`board backlog` and `board epics` support `--limit`** flag (default 50, max 200).
 - **`issue watch`/`unwatch`/`vote`/`unvote` produce JSON output** with `--json` flag.
-- **`parseTimeSpent` supports `d` (days) and `w` (weeks)** units — `1d` = 8h, `1w` = 5d (Jira defaults).
+- **`parseTimeSpent` supports `d` (days) and `w` (weeks)`** units — `1d` = 8h, `1w` = 5d (Jira defaults).
 - **`make test` now runs `gofmt` and `go vet`** before unit tests.
 - **Release workflow extracts version-specific notes** from CHANGELOG.md for GitHub Release body.
 
@@ -58,6 +73,7 @@ Initial release of jira-cli for Jira Data Center.
 - SKILL.md with JSON output schemas, error codes, exit codes, and complete flag reference.
 - GitHub PR template for contributors.
 
-[Unreleased]: https://github.com/fatecannotbealtered/jira-cli/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/fatecannotbealtered/jira-cli/compare/v1.0.2...HEAD
+[1.0.2]: https://github.com/fatecannotbealtered/jira-cli/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/fatecannotbealtered/jira-cli/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/fatecannotbealtered/jira-cli/releases/tag/v1.0.0

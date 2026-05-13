@@ -115,25 +115,42 @@ func cleanup(dir string) {
 	}
 }
 
+// sensitiveFlags contains flag names that should have their values redacted.
+// JDC-only CLI uses PAT (Personal Access Token), not passwords.
+var sensitiveFlags = map[string]bool{
+	"token": true,
+	"t":     true, // short for --token
+}
+
 // sanitizeArgs removes sensitive flag values and returns a clean copy.
+// Handles: --token value, --token=value, -t value, -t=value
 func sanitizeArgs(args []string) []string {
 	out := make([]string, 0, len(args))
-	skip := false
-	for _, a := range args {
-		if skip {
-			skip = false
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		lower := strings.ToLower(arg)
+
+		// Check for combined flag+value (e.g., -t=xxx or --token=xxx)
+		if strings.Contains(lower, "=") {
+			flag := strings.TrimPrefix(strings.TrimPrefix(strings.SplitN(lower, "=", 2)[0], "--"), "-")
+			if sensitiveFlags[flag] {
+				// Replace with redacted version
+				parts := strings.SplitN(arg, "=", 2)
+				out = append(out, parts[0]+"=***")
+				continue
+			}
+		}
+
+		// Check if this is a sensitive flag followed by a value
+		stripped := strings.TrimPrefix(lower, "--")
+		stripped = strings.TrimPrefix(stripped, "-")
+
+		if sensitiveFlags[stripped] {
+			i++ // skip next arg (the value)
 			continue
 		}
-		lower := strings.ToLower(a)
-		if lower == "--token" || lower == "-t" {
-			skip = true
-			continue
-		}
-		// Handle --token=value and --token=value forms
-		if strings.HasPrefix(lower, "--token=") {
-			continue
-		}
-		out = append(out, a)
+
+		out = append(out, arg)
 	}
 	return out
 }

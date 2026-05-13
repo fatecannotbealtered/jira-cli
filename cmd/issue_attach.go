@@ -31,7 +31,7 @@ var issueAttachCmd = &cobra.Command{
 		if dryRunOutput("upload attachment", map[string]any{"key": args[0], "file": filePath}) {
 			return nil
 		}
-		attachments, err := client.Issues.UploadAttachment(args[0], filePath)
+		attachments, err := client.Issues.UploadAttachment(cmd.Context(), args[0], filePath)
 		if err != nil {
 			return handleAPIError(err, jsonMode)
 		}

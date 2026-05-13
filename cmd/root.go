@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"crypto/subtle"
 	"errors"
 	"fmt"
 	"os"
@@ -152,6 +153,7 @@ func exitCodeForStatus(status int) int {
 
 // confirmAction asks the user to type a specific string to confirm an action.
 // Returns true immediately if --force is set.
+// Uses constant-time comparison to prevent timing attacks.
 func confirmAction(prompt, expected string) bool {
 	if forceMode {
 		return true
@@ -162,7 +164,11 @@ func confirmAction(prompt, expected string) bool {
 	if err != nil {
 		return false
 	}
-	return input == expected
+	// Constant-time comparison to prevent timing attacks
+	if subtle.ConstantTimeCompare([]byte(input), []byte(expected)) == 1 {
+		return true
+	}
+	return false
 }
 
 // dryRunOutput outputs a dry-run message and returns true if --dry-run is set.

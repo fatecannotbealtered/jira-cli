@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -370,9 +371,9 @@ func (a *IssueAPI) ListRemoteLinks(key string) ([]RemoteLink, error) {
 }
 
 // UploadAttachment uploads an attachment.
-func (a *IssueAPI) UploadAttachment(key, filePath string) ([]Attachment, error) {
+func (a *IssueAPI) UploadAttachment(ctx context.Context, key, filePath string) ([]Attachment, error) {
 	path := a.client.restPath(fmt.Sprintf("/issue/%s/attachments", url.PathEscape(key)))
-	data, err := a.client.Upload(path, filePath)
+	data, err := a.client.Upload(ctx, path, filePath)
 	if err != nil {
 		return nil, err
 	}
