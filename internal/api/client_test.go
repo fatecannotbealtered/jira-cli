@@ -1,16 +1,34 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/fatecannotbealtered/jira-cli/internal/config"
 )
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+type errReadCloser struct{}
+
+func (errReadCloser) Read([]byte) (int, error) { return 0, fmt.Errorf("read failed") }
+func (errReadCloser) Close() error             { return nil }
 
 // newTestClient creates a Client pointing at the given test server URL.
 func newTestClient(serverURL string) *Client {
@@ -432,5 +450,660 @@ func TestAPIError_Error(t *testing.T) {
 				t.Errorf("Error() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestAPIError_ErrorWithErrorsMap(t *testing.T) {
+	err := &APIError{StatusCode: 400, Errors: map[string]string{"summary": "required"}}
+	got := err.Error()
+	if !strings.Contains(got, "400") || !strings.Contains(got, "summary") {
+		t.Errorf("Error() = %q", got)
+	}
+}
+
+func TestDefaultUserAgent(t *testing.T) {
+	var seenUA atomic.Value
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenUA.Store(r.Header.Get("User-Agent"))
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{}`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+
+	t.Setenv("JIRA_CLI_USER_AGENT", "custom-agent")
+	if _, err := c.Get("/ua-custom"); err != nil {
+		t.Fatalf("custom UA: %v", err)
+	}
+	if got := seenUA.Load().(string); got != "custom-agent" {
+		t.Errorf("User-Agent = %q, want custom-agent", got)
+	}
+
+	t.Setenv("JIRA_CLI_USER_AGENT", "")
+	if _, err := c.Get("/ua-default"); err != nil {
+		t.Fatalf("default UA: %v", err)
+	}
+	if got := seenUA.Load().(string); got != "jira-cli" {
+		t.Errorf("User-Agent = %q, want jira-cli", got)
+	}
+
+	t.Setenv("JIRA_CLI_USER_AGENT", "   ")
+	if _, err := c.Get("/ua-trimmed"); err != nil {
+		t.Fatalf("whitespace UA: %v", err)
+	}
+	if got := seenUA.Load().(string); got != "jira-cli" {
+		t.Errorf("User-Agent = %q, want jira-cli for blank env", got)
+	}
+}
+
+func TestGetWithContext(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{"ok":true}`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	data, err := c.GetWithContext(context.Background(), "/rest/api/2/myself")
+	if err != nil {
+		t.Fatalf("GetWithContext: %v", err)
+	}
+	if len(data) == 0 {
+		t.Error("expected response body")
+	}
+}
+
+func TestPostWithContext(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+		_, _ = fmt.Fprint(w, `{"id":"1"}`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	data, err := c.PostWithContext(context.Background(), "/rest/api/2/issue", map[string]string{"summary": "x"})
+	if err != nil {
+		t.Fatalf("PostWithContext: %v", err)
+	}
+	if len(data) == 0 {
+		t.Error("expected response body")
+	}
+}
+
+func TestParseError_WithOriginalMessages(t *testing.T) {
+	c := newTestClient("http://example.com")
+	body := []byte(`{"errorMessages":["server detail"],"errors":{"field":"bad"}}`)
+
+	for _, tc := range []struct {
+		code int
+		want string
+	}{
+		{http.StatusUnauthorized, "not logged in"},
+		{http.StatusForbidden, "permission denied"},
+		{http.StatusNotFound, "resource not found"},
+	} {
+		apiErr := c.parseError(tc.code, body)
+		if apiErr.StatusCode != tc.code {
+			t.Fatalf("code %d: StatusCode = %d", tc.code, apiErr.StatusCode)
+		}
+		if len(apiErr.ErrorMessages) < 2 || apiErr.ErrorMessages[1] != "server detail" {
+			t.Errorf("code %d: messages = %v", tc.code, apiErr.ErrorMessages)
+		}
+		if apiErr.Errors["field"] != "bad" {
+			t.Errorf("code %d: errors = %v", tc.code, apiErr.Errors)
+		}
+	}
+}
+
+func TestParseError_DefaultBranches(t *testing.T) {
+	c := newTestClient("http://example.com")
+
+	withErrors := c.parseError(418, []byte(`{"errors":{"tea":"short"}}`))
+	if withErrors.ErrorMessages != nil {
+		t.Errorf("expected nil ErrorMessages, got %v", withErrors.ErrorMessages)
+	}
+	if withErrors.Errors["tea"] != "short" {
+		t.Errorf("errors = %v", withErrors.Errors)
+	}
+
+	empty := c.parseError(418, nil)
+	if len(empty.ErrorMessages) != 1 || empty.ErrorMessages[0] != "unexpected status code 418" {
+		t.Errorf("empty body error = %v", empty.ErrorMessages)
+	}
+}
+
+func TestDoWithRetry_MarshalError(t *testing.T) {
+	c := newTestClient("http://example.com")
+	_, _, err := c.doWithRetry(context.Background(), http.MethodPost, "/x", make(chan int))
+	if err == nil || !strings.Contains(err.Error(), "encoding request body") {
+		t.Fatalf("expected marshal error, got %v", err)
+	}
+}
+
+func TestDoWithRetry_InvalidURL(t *testing.T) {
+	c := newTestClient("http://example.com")
+	c.host = "://bad-host"
+	_, _, err := c.doWithRetry(context.Background(), http.MethodGet, "/x", nil)
+	if err == nil || !strings.Contains(err.Error(), "creating request") {
+		t.Fatalf("expected request creation error, got %v", err)
+	}
+}
+
+func TestDoWithRetry_NetworkError(t *testing.T) {
+	c := newTestClient("http://example.com")
+	c.httpClient = &http.Client{
+		Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return nil, fmt.Errorf("network down")
+		}),
+	}
+	_, _, err := c.doWithRetry(context.Background(), http.MethodGet, "/x", nil)
+	if err == nil || !strings.Contains(err.Error(), "executing request") {
+		t.Fatalf("expected network error, got %v", err)
+	}
+}
+
+func TestDoWithRetry_ReadBodyError(t *testing.T) {
+	c := newTestClient("http://example.com")
+	c.httpClient = &http.Client{
+		Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       errReadCloser{},
+				Header:     make(http.Header),
+			}, nil
+		}),
+	}
+	_, code, err := c.doWithRetry(context.Background(), http.MethodGet, "/x", nil)
+	if err == nil || !strings.Contains(err.Error(), "reading response body") {
+		t.Fatalf("expected read error, got code=%d err=%v", code, err)
+	}
+}
+
+func TestDoWithRetry_429ContextCanceled(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "30")
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, _, err := c.doWithRetry(ctx, http.MethodGet, "/rest/api/2/issue", nil)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+}
+
+func TestDoWithRetry_429ContextCanceledDuringWait(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "30")
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		cancel()
+	}()
+
+	_, _, err := c.doWithRetry(ctx, http.MethodGet, "/rest/api/2/issue", nil)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled during wait, got %v", err)
+	}
+}
+
+func TestDoWithRetry_5xxContextCanceled(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, _, err := c.doWithRetry(ctx, http.MethodGet, "/rest/api/2/issue", nil)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+}
+
+func TestDoWithRetry_5xxContextCanceledDuringWait(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		cancel()
+	}()
+
+	_, _, err := c.doWithRetry(ctx, http.MethodGet, "/rest/api/2/issue", nil)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled during wait, got %v", err)
+	}
+}
+
+func TestDoWithRetry_429PositiveRetryAfter(t *testing.T) {
+	var callCount int32
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := atomic.AddInt32(&callCount, 1)
+		if n == 1 {
+			w.Header().Set("Retry-After", "1")
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{"ok":true}`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	start := time.Now()
+	if _, err := c.Get("/rest/api/2/issue"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed < 900*time.Millisecond {
+		t.Errorf("expected ~1s Retry-After wait, got %v", elapsed)
+	}
+}
+
+func TestDoWithRetry_429InvalidRetryAfter(t *testing.T) {
+	var callCount int32
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := atomic.AddInt32(&callCount, 1)
+		if n == 1 {
+			w.Header().Set("Retry-After", "not-a-number")
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{"ok":true}`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	if _, err := c.Get("/rest/api/2/issue"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if atomic.LoadInt32(&callCount) != 2 {
+		t.Errorf("expected 2 calls, got %d", atomic.LoadInt32(&callCount))
+	}
+}
+
+func TestRedirectTooManyRedirects(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/loop", http.StatusFound)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Get("/loop")
+	if err == nil || !strings.Contains(err.Error(), "executing request") {
+		t.Fatalf("expected redirect error, got %v", err)
+	}
+}
+
+func TestUpload_Success(t *testing.T) {
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "attach.txt")
+	if err := os.WriteFile(filePath, []byte("payload"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Atlassian-Token") != "no-check" {
+			t.Errorf("X-Atlassian-Token = %q", r.Header.Get("X-Atlassian-Token"))
+		}
+		if !strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+			t.Errorf("Content-Type = %q", r.Header.Get("Content-Type"))
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `[{"id":"1"}]`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	data, err := c.Upload(context.Background(), "/rest/api/2/issue/TEST-1/attachments", filePath)
+	if err != nil {
+		t.Fatalf("Upload: %v", err)
+	}
+	if len(data) == 0 {
+		t.Error("expected upload response")
+	}
+}
+
+func TestUpload_ContextCanceled(t *testing.T) {
+	c := newTestClient("http://example.com")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := c.Upload(ctx, "/upload", filepath.Join(t.TempDir(), "missing.txt"))
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+}
+
+func TestUpload_FileOpenError(t *testing.T) {
+	c := newTestClient("http://example.com")
+	_, err := c.Upload(context.Background(), "/upload", filepath.Join(t.TempDir(), "no-such-file.txt"))
+	if err == nil || !strings.Contains(err.Error(), "opening file") {
+		t.Fatalf("expected open error, got %v", err)
+	}
+}
+
+func TestUpload_NetworkError(t *testing.T) {
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "attach.txt")
+	if err := os.WriteFile(filePath, []byte("payload"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	c := newTestClient("http://example.com")
+	c.httpClient = &http.Client{
+		Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return nil, fmt.Errorf("upload network down")
+		}),
+	}
+	_, err := c.Upload(context.Background(), "/upload", filePath)
+	if err == nil || !strings.Contains(err.Error(), "executing upload request") {
+		t.Fatalf("expected network error, got %v", err)
+	}
+}
+
+func TestUpload_ReadResponseError(t *testing.T) {
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "attach.txt")
+	if err := os.WriteFile(filePath, []byte("payload"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	c := newTestClient("http://example.com")
+	c.httpClient = &http.Client{
+		Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       errReadCloser{},
+				Header:     make(http.Header),
+			}, nil
+		}),
+	}
+	_, err := c.Upload(context.Background(), "/upload", filePath)
+	if err == nil || !strings.Contains(err.Error(), "reading upload response") {
+		t.Fatalf("expected read error, got %v", err)
+	}
+}
+
+func TestUpload_429RetryAndExhaust(t *testing.T) {
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "attach.txt")
+	if err := os.WriteFile(filePath, []byte("payload"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var callCount int32
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := atomic.AddInt32(&callCount, 1)
+		if n <= 2 {
+			w.Header().Set("Retry-After", "0")
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{"ok":true}`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	if _, err := c.Upload(context.Background(), "/upload", filePath); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if atomic.LoadInt32(&callCount) != 3 {
+		t.Errorf("expected 3 calls, got %d", atomic.LoadInt32(&callCount))
+	}
+
+	atomic.StoreInt32(&callCount, 0)
+	ts429 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&callCount, 1)
+		w.Header().Set("Retry-After", "0")
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer ts429.Close()
+
+	c429 := newTestClient(ts429.URL)
+	_, err := c429.Upload(context.Background(), "/upload", filePath)
+	if apiErr, ok := err.(*APIError); !ok || apiErr.StatusCode != 429 {
+		t.Fatalf("expected 429 APIError, got %v", err)
+	}
+	if atomic.LoadInt32(&callCount) != 4 {
+		t.Errorf("expected 4 calls on exhaust, got %d", atomic.LoadInt32(&callCount))
+	}
+}
+
+func TestUpload_429ContextCanceledDuringWait(t *testing.T) {
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "attach.txt")
+	if err := os.WriteFile(filePath, []byte("payload"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "30")
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		cancel()
+	}()
+
+	_, err := c.Upload(ctx, "/upload", filePath)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+}
+
+func TestUpload_429PositiveRetryAfter(t *testing.T) {
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "attach.txt")
+	if err := os.WriteFile(filePath, []byte("payload"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var callCount int32
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := atomic.AddInt32(&callCount, 1)
+		if n == 1 {
+			w.Header().Set("Retry-After", "1")
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{"ok":true}`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	start := time.Now()
+	if _, err := c.Upload(context.Background(), "/upload", filePath); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed < 900*time.Millisecond {
+		t.Errorf("expected ~1s Retry-After wait, got %v", elapsed)
+	}
+}
+
+func TestUpload_5xxRetryAndExhaust(t *testing.T) {
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "attach.txt")
+	if err := os.WriteFile(filePath, []byte("payload"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var callCount int32
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := atomic.AddInt32(&callCount, 1)
+		if n <= 2 {
+			w.WriteHeader(http.StatusBadGateway)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{"ok":true}`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	if _, err := c.Upload(context.Background(), "/upload", filePath); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	atomic.StoreInt32(&callCount, 0)
+	ts503 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&callCount, 1)
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer ts503.Close()
+
+	c503 := newTestClient(ts503.URL)
+	_, err := c503.Upload(context.Background(), "/upload", filePath)
+	if apiErr, ok := err.(*APIError); !ok || apiErr.StatusCode != 503 {
+		t.Fatalf("expected 503 APIError, got %v", err)
+	}
+}
+
+func TestUpload_5xxContextCanceledDuringWait(t *testing.T) {
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "attach.txt")
+	if err := os.WriteFile(filePath, []byte("payload"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		cancel()
+	}()
+
+	_, err := c.Upload(ctx, "/upload", filePath)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+}
+
+func TestUpload_4xxError(t *testing.T) {
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "attach.txt")
+	if err := os.WriteFile(filePath, []byte("payload"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = fmt.Fprint(w, `{"errorMessages":["bad upload"]}`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Upload(context.Background(), "/upload", filePath)
+	if apiErr, ok := err.(*APIError); !ok || apiErr.StatusCode != 400 {
+		t.Fatalf("expected 400 APIError, got %v", err)
+	}
+}
+
+func TestUpload_429InvalidRetryAfter(t *testing.T) {
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "attach.txt")
+	if err := os.WriteFile(filePath, []byte("payload"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var callCount int32
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := atomic.AddInt32(&callCount, 1)
+		if n == 1 {
+			w.Header().Set("Retry-After", "invalid")
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{"ok":true}`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	if _, err := c.Upload(context.Background(), "/upload", filePath); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestUpload_CopyError(t *testing.T) {
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "attach.txt")
+	if err := os.WriteFile(filePath, []byte("payload"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	origOpen := uploadOpenFile
+	uploadOpenFile = func(string) (io.ReadCloser, error) {
+		return errReadCloser{}, nil
+	}
+	t.Cleanup(func() { uploadOpenFile = origOpen })
+
+	c := newTestClient("http://example.com")
+	_, err := c.Upload(context.Background(), "/upload", filePath)
+	if err == nil || !strings.Contains(err.Error(), "copying file content") {
+		t.Fatalf("expected copy error, got %v", err)
+	}
+}
+
+func TestUpload_CreateFormFileError(t *testing.T) {
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "attach.txt")
+	if err := os.WriteFile(filePath, []byte("payload"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	origCreate := uploadCreateFormFile
+	uploadCreateFormFile = func(*multipart.Writer, string, string) (io.Writer, error) {
+		return nil, fmt.Errorf("create form file failed")
+	}
+	t.Cleanup(func() { uploadCreateFormFile = origCreate })
+
+	c := newTestClient("http://example.com")
+	_, err := c.Upload(context.Background(), "/upload", filePath)
+	if err == nil || !strings.Contains(err.Error(), "creating form file") {
+		t.Fatalf("expected form file error, got %v", err)
+	}
+}
+
+func TestUpload_InvalidHost(t *testing.T) {
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "attach.txt")
+	if err := os.WriteFile(filePath, []byte("payload"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	c := newTestClient("http://example.com")
+	c.host = "://bad-host"
+	_, err := c.Upload(context.Background(), "/upload", filePath)
+	if err == nil || !strings.Contains(err.Error(), "creating upload request") {
+		t.Fatalf("expected request creation error, got %v", err)
 	}
 }

@@ -35,7 +35,7 @@ var epicListCmd = &cobra.Command{
 		boardID, _ := cmd.Flags().GetInt("board")
 		if boardID == 0 {
 			output.Error("--board is required")
-			return ErrSilent
+			return SilentErr(ExitBadArgs)
 		}
 		done, _ := cmd.Flags().GetBool("done")
 		epics, err := client.Boards.GetEpics(boardID, done)
@@ -68,7 +68,7 @@ var epicIssuesCmd = &cobra.Command{
 		boardID, _ := cmd.Flags().GetInt("board")
 		if boardID == 0 {
 			output.Error("--board is required")
-			return ErrSilent
+			return SilentErr(ExitBadArgs)
 		}
 
 		// Try Agile API first

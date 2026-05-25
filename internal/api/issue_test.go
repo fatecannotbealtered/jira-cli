@@ -1,10 +1,13 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -215,6 +218,32 @@ func TestIssueEdit_Success(t *testing.T) {
 	}
 }
 
+func TestIssueEdit_ConvertsDescriptionToADF(t *testing.T) {
+	var receivedBody map[string]any
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			t.Errorf("method = %q, want PUT", r.Method)
+		}
+		_ = json.NewDecoder(r.Body).Decode(&receivedBody)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	err := c.Issues.Edit("PROJ-1", EditIssueRequest{
+		Fields: EditIssueFields{Description: "plain text description"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	fields, _ := receivedBody["fields"].(map[string]any)
+	desc, _ := fields["description"].(map[string]any)
+	if desc["type"] != "doc" {
+		t.Errorf("expected description to be ADF doc, got %v", desc)
+	}
+}
+
 // ─── Issue.Delete ─────────────────────────────────────────────────────────────
 
 func TestIssueDelete_Success(t *testing.T) {
@@ -363,6 +392,44 @@ func TestIssueAddWorklog_InvalidTime(t *testing.T) {
 	}
 }
 
+// ─── Issue.ListWorklogs ───────────────────────────────────────────────────────
+
+func TestIssueListWorklogs_Pagination(t *testing.T) {
+	callCount := 0
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Errorf("method = %q, want GET", r.Method)
+		}
+		startAt := r.URL.Query().Get("startAt")
+		callCount++
+
+		w.WriteHeader(http.StatusOK)
+		if startAt == "0" || startAt == "" {
+			_, _ = fmt.Fprint(w, `{"startAt":0,"maxResults":100,"total":3,"worklogs":[
+				{"id":"1","timeSpent":"1h","timeSpentSeconds":3600},
+				{"id":"2","timeSpent":"2h","timeSpentSeconds":7200}
+			]}`)
+		} else {
+			_, _ = fmt.Fprint(w, `{"startAt":2,"maxResults":100,"total":3,"worklogs":[
+				{"id":"3","timeSpent":"30m","timeSpentSeconds":1800}
+			]}`)
+		}
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	worklogs, err := c.Issues.ListWorklogs("PROJ-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(worklogs) != 3 {
+		t.Errorf("expected 3 worklogs, got %d", len(worklogs))
+	}
+	if callCount != 2 {
+		t.Errorf("expected 2 API calls for pagination, got %d", callCount)
+	}
+}
+
 // ─── parseTimeSpent ───────────────────────────────────────────────────────────
 
 func TestParseTimeSpent(t *testing.T) {
@@ -400,5 +467,1117 @@ func TestParseTimeSpent(t *testing.T) {
 				t.Errorf("parseTimeSpent(%q) = %d, want %d", tc.input, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestParseTimeSpent_InvalidUnitParts(t *testing.T) {
+	cases := []string{"abcw", "abcd", "1dabc h", "1habc m"}
+	for _, input := range cases {
+		if _, err := parseTimeSpent(input); err == nil {
+			t.Errorf("expected error for %q", input)
+		}
+	}
+}
+
+// ─── Issue.Get (error paths) ──────────────────────────────────────────────────
+
+func TestIssueGet_InvalidJSON(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{invalid`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Issues.Get("PROJ-1", nil)
+	if err == nil {
+		t.Fatal("expected parse error")
+	}
+	if !strings.Contains(err.Error(), "parsing issue") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+// ─── Issue.List (full coverage) ───────────────────────────────────────────────
+
+func TestIssueList_AllFiltersAndDefaultLimit(t *testing.T) {
+	var receivedBody map[string]any
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&receivedBody)
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{"startAt":0,"maxResults":50,"total":0,"issues":[]}`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Issues.List(IssueListOptions{
+		Project:  "PROJ",
+		Assignee: "alice",
+		Label:    "backend",
+		Priority: "High",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	jql, _ := receivedBody["jql"].(string)
+	if !strings.Contains(jql, `assignee = "alice"`) {
+		t.Errorf("JQL missing assignee: %s", jql)
+	}
+	if !strings.Contains(jql, `labels = "backend"`) {
+		t.Errorf("JQL missing label: %s", jql)
+	}
+	if !strings.Contains(jql, `priority = "High"`) {
+		t.Errorf("JQL missing priority: %s", jql)
+	}
+	maxResults, _ := receivedBody["maxResults"].(float64)
+	if maxResults != 50 {
+		t.Errorf("maxResults = %v, want 50 (default limit)", maxResults)
+	}
+}
+
+func TestIssueList_SearchError(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Issues.List(IssueListOptions{Project: "PROJ"})
+	if err == nil {
+		t.Fatal("expected search error")
+	}
+}
+
+// ─── Issue.Create (error paths) ───────────────────────────────────────────────
+
+func TestIssueCreate_APIError(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Issues.Create(CreateIssueRequest{
+		Fields: CreateIssueFields{
+			Project:   ProjectRef{Key: "P"},
+			Summary:   "x",
+			IssueType: IssueTypeRef{Name: "Task"},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected API error")
+	}
+}
+
+func TestIssueCreate_InvalidJSON(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+		_, _ = fmt.Fprint(w, `{bad json`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Issues.Create(CreateIssueRequest{
+		Fields: CreateIssueFields{
+			Project:   ProjectRef{Key: "P"},
+			Summary:   "x",
+			IssueType: IssueTypeRef{Name: "Task"},
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "parsing create response") {
+		t.Fatalf("expected parse error, got %v", err)
+	}
+}
+
+func TestIssueCreate_MissingKey(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+		_, _ = fmt.Fprint(w, `{"id":"100"}`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Issues.Create(CreateIssueRequest{
+		Fields: CreateIssueFields{
+			Project:   ProjectRef{Key: "P"},
+			Summary:   "x",
+			IssueType: IssueTypeRef{Name: "Task"},
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "missing issue key") {
+		t.Fatalf("expected missing key error, got %v", err)
+	}
+}
+
+// ─── Issue.EditRaw ────────────────────────────────────────────────────────────
+
+func TestIssueEditRaw_Success(t *testing.T) {
+	var receivedBody map[string]any
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			t.Errorf("method = %q, want PUT", r.Method)
+		}
+		_ = json.NewDecoder(r.Body).Decode(&receivedBody)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	err := c.Issues.EditRaw("PROJ-1", map[string]any{
+		"fields": map[string]any{"customfield_10001": "value"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	fields, _ := receivedBody["fields"].(map[string]any)
+	if fields["customfield_10001"] != "value" {
+		t.Errorf("unexpected body: %v", receivedBody)
+	}
+}
+
+func TestIssueEditRaw_Error(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	err := c.Issues.EditRaw("PROJ-1", map[string]any{"fields": map[string]any{}})
+	if err == nil {
+		t.Fatal("expected API error")
+	}
+}
+
+// ─── Issue.GetTransitions (error paths) ───────────────────────────────────────
+
+func TestIssueGetTransitions_Error(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Issues.GetTransitions("PROJ-1")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestIssueGetTransitions_InvalidJSON(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{bad`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Issues.GetTransitions("PROJ-1")
+	if err == nil || !strings.Contains(err.Error(), "parsing transitions") {
+		t.Fatalf("expected parse error, got %v", err)
+	}
+}
+
+// ─── Issue.DoTransition ───────────────────────────────────────────────────────
+
+func TestIssueDoTransition_Success(t *testing.T) {
+	var receivedBody map[string]any
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("method = %q, want POST", r.Method)
+		}
+		_ = json.NewDecoder(r.Body).Decode(&receivedBody)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	err := c.Issues.DoTransition("PROJ-1", "21")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	transition, _ := receivedBody["transition"].(map[string]any)
+	if transition["id"] != "21" {
+		t.Errorf("transition id = %v, want 21", transition["id"])
+	}
+}
+
+func TestIssueDoTransition_Error(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	err := c.Issues.DoTransition("PROJ-1", "21")
+	if err == nil {
+		t.Fatal("expected API error")
+	}
+}
+
+// ─── Issue.Assign ─────────────────────────────────────────────────────────────
+
+func TestIssueAssign_WithUsername(t *testing.T) {
+	var receivedBody map[string]any
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			t.Errorf("method = %q, want PUT", r.Method)
+		}
+		_ = json.NewDecoder(r.Body).Decode(&receivedBody)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	err := c.Issues.Assign("PROJ-1", "alice")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if receivedBody["name"] != "alice" {
+		t.Errorf("name = %v, want alice", receivedBody["name"])
+	}
+}
+
+func TestIssueAssign_ClearAssignee(t *testing.T) {
+	var receivedBody map[string]any
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&receivedBody)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	err := c.Issues.Assign("PROJ-1", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if receivedBody["name"] != nil {
+		t.Errorf("name = %v, want nil", receivedBody["name"])
+	}
+}
+
+func TestIssueAssign_Error(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	err := c.Issues.Assign("PROJ-1", "alice")
+	if err == nil {
+		t.Fatal("expected API error")
+	}
+}
+
+// ─── Issue watchers ───────────────────────────────────────────────────────────
+
+func TestIssueAddWatcher_Success(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("method = %q, want POST", r.Method)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	err := c.Issues.AddWatcher("PROJ-1", "bob")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestIssueAddWatcher_Error(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	err := c.Issues.AddWatcher("PROJ-1", "bob")
+	if err == nil {
+		t.Fatal("expected API error")
+	}
+}
+
+func TestIssueRemoveWatcher_Success(t *testing.T) {
+	var receivedQuery string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			t.Errorf("method = %q, want DELETE", r.Method)
+		}
+		receivedQuery = r.URL.RawQuery
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	err := c.Issues.RemoveWatcher("PROJ-1", "bob@example.com")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(receivedQuery, "username=") {
+		t.Errorf("expected username query param, got %q", receivedQuery)
+	}
+}
+
+func TestIssueRemoveWatcher_Error(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	err := c.Issues.RemoveWatcher("PROJ-1", "bob")
+	if err == nil {
+		t.Fatal("expected API error")
+	}
+}
+
+func TestIssueGetWatchers_Success(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{"watchers":[{"name":"alice","displayName":"Alice"}]}`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	watchers, err := c.Issues.GetWatchers("PROJ-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(watchers) != 1 || watchers[0].Name != "alice" {
+		t.Errorf("unexpected watchers: %+v", watchers)
+	}
+}
+
+func TestIssueGetWatchers_Error(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Issues.GetWatchers("PROJ-1")
+	if err == nil {
+		t.Fatal("expected API error")
+	}
+}
+
+func TestIssueGetWatchers_InvalidJSON(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{bad`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Issues.GetWatchers("PROJ-1")
+	if err == nil || !strings.Contains(err.Error(), "parsing watchers") {
+		t.Fatalf("expected parse error, got %v", err)
+	}
+}
+
+// ─── Issue votes ──────────────────────────────────────────────────────────────
+
+func TestIssueAddVote_Success(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("method = %q, want POST", r.Method)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	err := c.Issues.AddVote("PROJ-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestIssueAddVote_Error(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	err := c.Issues.AddVote("PROJ-1")
+	if err == nil {
+		t.Fatal("expected API error")
+	}
+}
+
+func TestIssueRemoveVote_Success(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			t.Errorf("method = %q, want DELETE", r.Method)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	err := c.Issues.RemoveVote("PROJ-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestIssueRemoveVote_Error(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	err := c.Issues.RemoveVote("PROJ-1")
+	if err == nil {
+		t.Fatal("expected API error")
+	}
+}
+
+// ─── Issue.AddComment (error paths) ─────────────────────────────────────────────
+
+func TestIssueAddComment_Error(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Issues.AddComment("PROJ-1", "comment")
+	if err == nil {
+		t.Fatal("expected API error")
+	}
+}
+
+func TestIssueAddComment_InvalidJSON(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+		_, _ = fmt.Fprint(w, `{bad`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Issues.AddComment("PROJ-1", "comment")
+	if err == nil || !strings.Contains(err.Error(), "parsing comment") {
+		t.Fatalf("expected parse error, got %v", err)
+	}
+}
+
+// ─── Issue.ListComments ─────────────────────────────────────────────────────────
+
+func TestIssueListComments_Success(t *testing.T) {
+	var receivedQuery string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedQuery = r.URL.RawQuery
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{"comments":[{"id":"1","created":"2024-01-01T00:00:00.000+0000"}],"total":1}`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	comments, err := c.Issues.ListComments("PROJ-1", 10)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(comments) != 1 {
+		t.Errorf("expected 1 comment, got %d", len(comments))
+	}
+	if !strings.Contains(receivedQuery, "maxResults=10") {
+		t.Errorf("expected maxResults=10 in query, got %q", receivedQuery)
+	}
+}
+
+func TestIssueListComments_DefaultLimit(t *testing.T) {
+	var receivedQuery string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedQuery = r.URL.RawQuery
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{"comments":[]}`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Issues.ListComments("PROJ-1", 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(receivedQuery, "maxResults=50") {
+		t.Errorf("expected default maxResults=50, got %q", receivedQuery)
+	}
+}
+
+func TestIssueListComments_Error(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Issues.ListComments("PROJ-1", 10)
+	if err == nil {
+		t.Fatal("expected API error")
+	}
+}
+
+func TestIssueListComments_InvalidJSON(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{bad`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Issues.ListComments("PROJ-1", 10)
+	if err == nil || !strings.Contains(err.Error(), "parsing comments") {
+		t.Fatalf("expected parse error, got %v", err)
+	}
+}
+
+// ─── Issue.DeleteComment ──────────────────────────────────────────────────────
+
+func TestIssueDeleteComment_Success(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			t.Errorf("method = %q, want DELETE", r.Method)
+		}
+		if !strings.Contains(r.URL.Path, "/comment/10100") {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	err := c.Issues.DeleteComment("PROJ-1", "10100")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestIssueDeleteComment_Error(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	err := c.Issues.DeleteComment("PROJ-1", "10100")
+	if err == nil {
+		t.Fatal("expected API error")
+	}
+}
+
+// ─── Issue.AddWorklog (full coverage) ─────────────────────────────────────────
+
+func TestIssueAddWorklog_WithCommentAndStarted(t *testing.T) {
+	var receivedBody WorklogRequest
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&receivedBody)
+		w.WriteHeader(http.StatusCreated)
+		_, _ = fmt.Fprint(w, `{"id":"10200","timeSpent":"1h","timeSpentSeconds":3600}`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	worklog, err := c.Issues.AddWorklog("PROJ-1", "1h", "2024-06-01T10:00:00.000+0000", "done work")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if worklog.ID != "10200" {
+		t.Errorf("ID = %q, want 10200", worklog.ID)
+	}
+	if receivedBody.Started != "2024-06-01T10:00:00.000+0000" {
+		t.Errorf("Started = %q", receivedBody.Started)
+	}
+	if receivedBody.Comment != "done work" {
+		t.Errorf("Comment = %v, want done work", receivedBody.Comment)
+	}
+}
+
+func TestIssueAddWorklog_PostError(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Issues.AddWorklog("PROJ-1", "1h", "", "")
+	if err == nil {
+		t.Fatal("expected API error")
+	}
+}
+
+func TestIssueAddWorklog_InvalidJSON(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+		_, _ = fmt.Fprint(w, `{bad`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Issues.AddWorklog("PROJ-1", "1h", "", "")
+	if err == nil || !strings.Contains(err.Error(), "parsing worklog") {
+		t.Fatalf("expected parse error, got %v", err)
+	}
+}
+
+// ─── Issue.ListWorklogs (error paths) ───────────────────────────────────────────
+
+func TestIssueListWorklogs_Error(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Issues.ListWorklogs("PROJ-1")
+	if err == nil {
+		t.Fatal("expected API error")
+	}
+}
+
+func TestIssueListWorklogs_InvalidJSON(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{bad`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Issues.ListWorklogs("PROJ-1")
+	if err == nil || !strings.Contains(err.Error(), "parsing worklogs") {
+		t.Fatalf("expected parse error, got %v", err)
+	}
+}
+
+// ─── Issue links ──────────────────────────────────────────────────────────────
+
+func TestIssueCreateLink_Success(t *testing.T) {
+	var receivedBody IssueLinkRequest
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("method = %q, want POST", r.Method)
+		}
+		_ = json.NewDecoder(r.Body).Decode(&receivedBody)
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	err := c.Issues.CreateLink(IssueLinkRequest{
+		Type:         LinkTypeRef{Name: "Blocks"},
+		InwardIssue:  KeyRef{Key: "PROJ-1"},
+		OutwardIssue: KeyRef{Key: "PROJ-2"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if receivedBody.Type.Name != "Blocks" {
+		t.Errorf("link type = %q", receivedBody.Type.Name)
+	}
+}
+
+func TestIssueCreateLink_Error(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	err := c.Issues.CreateLink(IssueLinkRequest{})
+	if err == nil {
+		t.Fatal("expected API error")
+	}
+}
+
+func TestIssueDeleteLink_Success(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			t.Errorf("method = %q, want DELETE", r.Method)
+		}
+		if !strings.HasSuffix(r.URL.Path, "/issueLink/10001") {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	err := c.Issues.DeleteLink("10001")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestIssueDeleteLink_Error(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	err := c.Issues.DeleteLink("10001")
+	if err == nil {
+		t.Fatal("expected API error")
+	}
+}
+
+func TestIssueGetLinkTypes_Success(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{"issueLinkTypes":[{"id":"10000","name":"Blocks","inward":"is blocked by","outward":"blocks"}]}`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	types, err := c.Issues.GetLinkTypes()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(types) != 1 || types[0].Name != "Blocks" {
+		t.Errorf("unexpected link types: %+v", types)
+	}
+}
+
+func TestIssueGetLinkTypes_Error(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Issues.GetLinkTypes()
+	if err == nil {
+		t.Fatal("expected API error")
+	}
+}
+
+func TestIssueGetLinkTypes_InvalidJSON(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{bad`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Issues.GetLinkTypes()
+	if err == nil || !strings.Contains(err.Error(), "parsing link types") {
+		t.Fatalf("expected parse error, got %v", err)
+	}
+}
+
+// ─── Issue remote links ─────────────────────────────────────────────────────────
+
+func TestIssueAddRemoteLink_Success(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+		_, _ = fmt.Fprint(w, `{"id":1,"object":{"url":"https://example.com","title":"Doc"}}`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	link, err := c.Issues.AddRemoteLink("PROJ-1", RemoteLinkRequest{
+		Object: RemoteLinkObject{URL: "https://example.com", Title: "Doc"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if link.ID != 1 || link.Object.Title != "Doc" {
+		t.Errorf("unexpected link: %+v", link)
+	}
+}
+
+func TestIssueAddRemoteLink_Error(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Issues.AddRemoteLink("PROJ-1", RemoteLinkRequest{})
+	if err == nil {
+		t.Fatal("expected API error")
+	}
+}
+
+func TestIssueAddRemoteLink_InvalidJSON(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+		_, _ = fmt.Fprint(w, `{bad`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Issues.AddRemoteLink("PROJ-1", RemoteLinkRequest{})
+	if err == nil || !strings.Contains(err.Error(), "parsing remote link") {
+		t.Fatalf("expected parse error, got %v", err)
+	}
+}
+
+func TestIssueListRemoteLinks_Success(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `[{"id":1,"object":{"url":"https://example.com","title":"Doc"}}]`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	links, err := c.Issues.ListRemoteLinks("PROJ-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(links) != 1 || links[0].Object.URL != "https://example.com" {
+		t.Errorf("unexpected links: %+v", links)
+	}
+}
+
+func TestIssueListRemoteLinks_Error(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Issues.ListRemoteLinks("PROJ-1")
+	if err == nil {
+		t.Fatal("expected API error")
+	}
+}
+
+func TestIssueListRemoteLinks_InvalidJSON(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{bad`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Issues.ListRemoteLinks("PROJ-1")
+	if err == nil || !strings.Contains(err.Error(), "parsing remote links") {
+		t.Fatalf("expected parse error, got %v", err)
+	}
+}
+
+// ─── Issue attachments ──────────────────────────────────────────────────────────
+
+func TestIssueUploadAttachment_Success(t *testing.T) {
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "note.txt")
+	if err := os.WriteFile(filePath, []byte("attachment content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("method = %q, want POST", r.Method)
+		}
+		if r.Header.Get("X-Atlassian-Token") != "no-check" {
+			t.Errorf("missing X-Atlassian-Token header")
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `[{"id":"10001","filename":"note.txt","size":18}]`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	attachments, err := c.Issues.UploadAttachment(context.Background(), "PROJ-1", filePath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(attachments) != 1 || attachments[0].Filename != "note.txt" {
+		t.Errorf("unexpected attachments: %+v", attachments)
+	}
+}
+
+func TestIssueUploadAttachment_FileNotFound(t *testing.T) {
+	c := newTestClient("http://unused")
+	_, err := c.Issues.UploadAttachment(context.Background(), "PROJ-1", filepath.Join(t.TempDir(), "missing.txt"))
+	if err == nil {
+		t.Fatal("expected file open error")
+	}
+}
+
+func TestIssueUploadAttachment_InvalidJSON(t *testing.T) {
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "note.txt")
+	if err := os.WriteFile(filePath, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{bad`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Issues.UploadAttachment(context.Background(), "PROJ-1", filePath)
+	if err == nil || !strings.Contains(err.Error(), "parsing attachments") {
+		t.Fatalf("expected parse error, got %v", err)
+	}
+}
+
+func TestIssueListAttachments_Success(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{
+			"id":"10001",
+			"key":"PROJ-1",
+			"fields":{
+				"summary":"Test",
+				"status":{"name":"Open"},
+				"issuetype":{"name":"Task"},
+				"attachment":[{"id":"20001","filename":"a.png","size":1024}]
+			}
+		}`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	attachments, err := c.Issues.ListAttachments("PROJ-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(attachments) != 1 || attachments[0].Filename != "a.png" {
+		t.Errorf("unexpected attachments: %+v", attachments)
+	}
+}
+
+func TestIssueListAttachments_Error(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Issues.ListAttachments("PROJ-1")
+	if err == nil {
+		t.Fatal("expected API error")
+	}
+}
+
+// ─── Issue.Search (full coverage) ─────────────────────────────────────────────
+
+func TestIssueSearch_WithFieldsAndDefaultMax(t *testing.T) {
+	var receivedBody map[string]any
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&receivedBody)
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{"startAt":0,"maxResults":50,"total":0,"issues":[]}`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Issues.Search("project = P", SearchOptions{Fields: []string{"summary", "status"}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	fields, ok := receivedBody["fields"].([]any)
+	if !ok || len(fields) != 2 {
+		t.Errorf("expected fields in body, got %v", receivedBody["fields"])
+	}
+	maxResults, _ := receivedBody["maxResults"].(float64)
+	if maxResults != 50 {
+		t.Errorf("maxResults = %v, want 50", maxResults)
+	}
+}
+
+func TestIssueSearch_Error(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Issues.Search("bad jql", SearchOptions{})
+	if err == nil {
+		t.Fatal("expected API error")
+	}
+}
+
+func TestIssueSearch_InvalidJSON(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{bad`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Issues.Search("project = P", SearchOptions{MaxResults: 10})
+	if err == nil || !strings.Contains(err.Error(), "parsing search result") {
+		t.Fatalf("expected parse error, got %v", err)
+	}
+}
+
+// ─── Issue.SearchAll (full coverage) ──────────────────────────────────────────
+
+func TestIssueSearchAll_Error(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Issues.SearchAll("project = P", []string{"summary"})
+	if err == nil {
+		t.Fatal("expected API error")
+	}
+}
+
+func TestIssueSearchAll_WithFields(t *testing.T) {
+	var receivedBody map[string]any
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&receivedBody)
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{"startAt":0,"maxResults":100,"total":1,"issues":[
+			{"id":"1","key":"P-1","fields":{"summary":"a","status":{"name":"Open"},"issuetype":{"name":"Task"}}}
+		]}`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	issues, err := c.Issues.SearchAll("project = P", []string{"summary"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(issues) != 1 {
+		t.Errorf("expected 1 issue, got %d", len(issues))
+	}
+	fields, ok := receivedBody["fields"].([]any)
+	if !ok || len(fields) != 1 {
+		t.Errorf("expected fields in search body, got %v", receivedBody["fields"])
+	}
+}
+
+func TestIssueSearchAll_MaxTotalCap(t *testing.T) {
+	callCount := 0
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		w.WriteHeader(http.StatusOK)
+		issues := make([]string, 10000)
+		for i := range issues {
+			issues[i] = fmt.Sprintf(
+				`{"id":"%d","key":"P-%d","fields":{"summary":"s","status":{"name":"Open"},"issuetype":{"name":"Task"}}}`,
+				i, i,
+			)
+		}
+		_, _ = fmt.Fprintf(w, `{"startAt":0,"maxResults":100,"total":50000,"issues":[%s]}`, strings.Join(issues, ","))
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	issues, err := c.Issues.SearchAll("project = P", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(issues) != 10000 {
+		t.Errorf("expected 10000 issues (cap), got %d", len(issues))
+	}
+	if callCount != 1 {
+		t.Errorf("expected 1 API call before cap, got %d", callCount)
 	}
 }

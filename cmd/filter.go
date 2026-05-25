@@ -113,7 +113,7 @@ var filterCreateCmd = &cobra.Command{
 		jql, _ := cmd.Flags().GetString("jql")
 		if name == "" || jql == "" {
 			output.Error("--name and --jql are required")
-			return ErrSilent
+			return SilentErr(ExitBadArgs)
 		}
 		description, _ := cmd.Flags().GetString("description")
 		filter, err := client.Filters.Create(name, jql, description)

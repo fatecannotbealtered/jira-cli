@@ -39,18 +39,19 @@ Go 构建，标准库与少量固定依赖，单文件二进制。
 推荐流程：先通过 npm 安装 CLI，再用 `npx skills add` 安装 AI Agent Skill。
 
 ```bash
-# 安装 CLI
+# 安装 CLI（需要 PATH 中有 curl —— postinstall 用它下载二进制）
 npm install -g @fatecannotbealtered-/jira-cli
 
-# 安装 CLI Skill
-npx skills add fatecannotbealtered/jira-cli -y -g
+# 安装 CLI Skill（二选一）
+npx skills add fatecannotbealtered/jira-cli -y -g   # 通过 skills 注册表
+jira-cli install-skill                               # 内置 skill → ~/.openclaw/skills
 
 # 登录并验证
 jira-cli login
-jira-cli doctor
+jira-cli doctor --json   # 确认 authValid 为 true（见 JSON 输出）
 ```
 
-CLI 包提供 `jira-cli` 命令；Skill 会让兼容的 AI 编程助手知道如何安全地调用它。如果你是正在协助用户安装的 AI Agent，请执行同一组步骤，并在遇到交互式浏览器或终端提示时让用户配合完成。
+CLI 包提供 `jira-cli` 命令；Skill 会让兼容的 AI 编程助手知道如何安全地调用它。`install-skill` 将 npm 包（或 release 压缩包）中内置的 skill 复制到 `~/.openclaw/skills`，供 OpenClaw 兼容的 Agent 使用。如果你是正在协助用户安装的 AI Agent，请执行同一组步骤，并在遇到交互式浏览器或终端提示时让用户配合完成。
 
 ### 其他安装方式
 
@@ -90,7 +91,7 @@ jira-cli login --host https://jira.company.com --token <PAT>
 ```bash
 export JIRA_HOST=https://jira.company.com
 export JIRA_TOKEN=<your-personal-access-token>
-jira-cli doctor --json
+jira-cli doctor --json   # 确认 authValid 为 true
 ```
 
 ### 生成 PAT
@@ -114,7 +115,8 @@ jira-cli issue create --project PROJ --summary "修复登录 Bug" --type Bug
 jira-cli issue create --project PROJ --summary "新功能" --field "Story Points=5"
 jira-cli issue edit PROJ-123 --priority High --assignee me
 jira-cli issue edit PROJ-123 --field "Story Points=8" --field "Team=Backend"
-jira-cli issue delete PROJ-123 --force          # --force 跳过确认
+jira-cli issue delete PROJ-123 --force          # --force 跳过确认提示
+jira-cli issue delete PROJ-123 --dry-run --json   # 预览删除（无需确认）
 
 # 克隆
 jira-cli issue clone PROJ-123
@@ -164,7 +166,16 @@ jira-cli sprint list --board 42
 jira-cli sprint active --board 42
 jira-cli sprint create --board 42 --name "Sprint 5" --start-date 2024-02-01 --end-date 2024-02-14
 jira-cli sprint move --sprint 10 --issues PROJ-123,PROJ-124
-jira-cli sprint close --sprint 10 --force
+jira-cli sprint close --sprint 10
+jira-cli sprint close --sprint 10 --dry-run       # 预览，不实际关闭
+```
+
+### Epic 管理
+
+```bash
+jira-cli epic list --board 42
+jira-cli epic list --board 42 --done             # 仅已完成 Epic
+jira-cli epic issues PROJ-1 --board 42
 ```
 
 ### Board 和 Backlog
@@ -185,31 +196,52 @@ jira-cli user search --query "john"
 jira-cli user me
 jira-cli filter list
 jira-cli filter run <filterId>
+jira-cli filter run <filterId> --json --fields key,summary,status
+jira-cli filter run <filterId> --json --raw
 ```
 
 ## JSON 输出
 
-所有命令支持 `--json` 获取机器可读输出。默认使用**扁平格式**（token 效率高，适合 AI Agent）：
+所有命令支持 `--json` 获取机器可读输出。**成功 JSON 输出到 stdout；错误 JSON 输出到 stderr** —— 用管道或重定向捕获 stdout 取数据，结合 `$?` 和 stderr 判断失败。
+
+默认使用**扁平格式**（token 效率高，适合 AI Agent）：
 
 ```bash
 # 扁平 JSON（默认）—— 最小字段，低 token 开销
 jira-cli issue get PROJ-123 --json
 jira-cli search "project = PROJ" --json | jq '.issues[].key'
 
-# 只输出需要的字段
+# issue list 返回裸数组；search 用分页元数据包裹 issues
+# filter run 加 --fields 时也返回裸裁剪数组
+jira-cli issue list --project PROJ --json | jq '.[].key'
+jira-cli search "project = PROJ" --json | jq '.issues[].key'
+jira-cli filter run 12345 --json --fields key,summary | jq '.[].key'
+
+# 裁剪 flat JSON 输出（issue get / issue list / sprint / filter run）
 jira-cli issue get PROJ-123 --json --fields key,summary,status,assignee
+
+# search --fields 控制向 Jira 请求的字段（API 层），不是输出裁剪
+jira-cli search "project = PROJ" --fields summary,status,customfield_10001 --json
 
 # 原始 Jira API 响应（完整嵌套结构）
 jira-cli issue get PROJ-123 --json --raw
 
-# 干净输出（抑制所有非 JSON 噪声）
+# 干净输出（抑制 stdout 上所有非 JSON 噪声）
 jira-cli issue get PROJ-123 --json --quiet
 
-# 预览写操作（不实际执行）
+# 预览写操作（无需确认）
 jira-cli issue delete PROJ-123 --dry-run --json
 ```
 
-错误响应包含机器可读的错误码和可操作提示：
+### 验证连通性（`doctor`）
+
+使用 `--json` 时检查 `authValid` 字段（认证/配置失败时退出码为 3）：
+
+```bash
+jira-cli doctor --json | jq '.authValid'   # 必须为 true
+```
+
+错误响应（stderr）包含机器可读的错误码和可操作提示：
 
 ```json
 {
@@ -248,8 +280,9 @@ jira-cli issue delete PROJ-123 --dry-run --json
 
 | 标志 | 适用命令 | 说明 |
 |------|----------|------|
-| `--raw` | `issue get`、`issue list`、`search`、`sprint list`、`sprint issues`、`sprint active` | 返回原始 Jira API 响应而非扁平格式 |
-| `--fields` | `issue get`、`issue list`、`sprint list`、`sprint issues` | 只输出指定字段（如 `--fields key,summary,status`） |
+| `--raw` | `issue get`、`issue list`、`search`、`filter run`、`sprint list`、`sprint issues`、`sprint active` | 返回原始 Jira API 响应而非扁平格式 |
+| `--fields` | `issue get`、`issue list`、`sprint list`、`sprint issues`、`filter run` | **输出裁剪** —— 在 flat JSON 中只保留指定字段（如 `--fields key,summary,status`） |
+| `--fields` | 仅 `search` | **Jira 请求字段** —— 逗号分隔，控制 API 拉取哪些字段（如 `--fields summary,status,customfield_10001`）；不裁剪 flat 输出 |
 
 ## 配置文件
 
@@ -266,6 +299,7 @@ jira-cli issue delete PROJ-123 --dry-run --json
 
 | 问题 | 解决方案 |
 |------|---------|
+| npm install 失败 / 找不到 curl | 确保 PATH 中有 `curl`（npm postinstall 用它下载二进制） |
 | 找不到配置 | 运行 `jira-cli login` 或设置 `JIRA_HOST` 和 `JIRA_TOKEN` 环境变量 |
 | 认证失败 | 在 Jira DC 个人资料设置中重新生成 PAT |
 | 权限不足 | 检查 PAT 权限范围和项目权限 |

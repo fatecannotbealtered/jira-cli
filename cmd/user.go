@@ -33,7 +33,7 @@ var userSearchCmd = &cobra.Command{
 		query, _ := cmd.Flags().GetString("query")
 		if query == "" {
 			output.Error("--query is required")
-			return ErrSilent
+			return SilentErr(ExitBadArgs)
 		}
 		assignable, _ := cmd.Flags().GetBool("assignable")
 		project, _ := cmd.Flags().GetString("project")

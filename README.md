@@ -39,18 +39,19 @@ This project is shared for **personal learning, research, and everyday productiv
 Recommended flow: install the CLI from npm, then install the AI Agent Skill with `npx skills add`.
 
 ```bash
-# Install CLI
+# Install CLI (requires curl on PATH — used to download the binary)
 npm install -g @fatecannotbealtered-/jira-cli
 
-# Install CLI Skill
-npx skills add fatecannotbealtered/jira-cli -y -g
+# Install CLI Skill (pick one)
+npx skills add fatecannotbealtered/jira-cli -y -g   # via skills registry
+jira-cli install-skill                               # bundled skill → ~/.openclaw/skills
 
 # Login and verify
 jira-cli login
-jira-cli doctor
+jira-cli doctor --json   # check authValid is true (see JSON Output)
 ```
 
-The CLI package provides the `jira-cli` binary; the Skill package teaches compatible AI coding assistants how to use it safely. If you are an AI Agent helping a user set this up, run the same steps and ask the user to complete any interactive browser or terminal prompts.
+The CLI package provides the `jira-cli` binary; the Skill teaches compatible AI coding assistants how to use it safely. `install-skill` copies the bundled skill from the npm package (or release tarball) into `~/.openclaw/skills` for OpenClaw-compatible agents. If you are an AI Agent helping a user set this up, run the same steps and ask the user to complete any interactive browser or terminal prompts.
 
 ### Alternative: Go install
 
@@ -91,7 +92,7 @@ Environment variables take precedence over the config file. This is the recommen
 ```bash
 export JIRA_HOST=https://jira.company.com
 export JIRA_TOKEN=<your-personal-access-token>
-jira-cli doctor --json
+jira-cli doctor --json   # verify authValid is true
 ```
 
 ### Generating a PAT
@@ -115,7 +116,8 @@ jira-cli issue create --project PROJ --summary "Fix login bug" --type Bug
 jira-cli issue create --project PROJ --summary "Sized story" --field "Story Points=5"
 jira-cli issue edit PROJ-123 --priority High --assignee me
 jira-cli issue edit PROJ-123 --field "Story Points=8" --field "Team=Backend"
-jira-cli issue delete PROJ-123 --force          # --force skips confirmation
+jira-cli issue delete PROJ-123 --force          # --force skips confirmation prompt
+jira-cli issue delete PROJ-123 --dry-run --json   # preview delete (no confirmation prompt)
 
 # Clone
 jira-cli issue clone PROJ-123
@@ -165,7 +167,16 @@ jira-cli sprint list --board 42
 jira-cli sprint active --board 42
 jira-cli sprint create --board 42 --name "Sprint 5" --start-date 2024-02-01 --end-date 2024-02-14
 jira-cli sprint move --sprint 10 --issues PROJ-123,PROJ-124
-jira-cli sprint close --sprint 10 --force
+jira-cli sprint close --sprint 10
+jira-cli sprint close --sprint 10 --dry-run       # preview without closing
+```
+
+### Epic Management
+
+```bash
+jira-cli epic list --board 42
+jira-cli epic list --board 42 --done             # completed epics only
+jira-cli epic issues PROJ-1 --board 42
 ```
 
 ### Board & Backlog
@@ -186,31 +197,52 @@ jira-cli user search --query "john"
 jira-cli user me
 jira-cli filter list
 jira-cli filter run <filterId>
+jira-cli filter run <filterId> --json --fields key,summary,status
+jira-cli filter run <filterId> --json --raw
 ```
 
 ## JSON Output
 
-All commands support `--json` for machine-readable output. By default, issue and sprint data is returned in a **flat, token-efficient format** (ideal for AI Agents):
+All commands support `--json` for machine-readable output. **Success JSON goes to stdout; error JSON goes to stderr** — pipe or capture stdout for data, check `$?` and stderr for failures.
+
+By default, issue and sprint data is returned in a **flat, token-efficient format** (ideal for AI Agents):
 
 ```bash
 # Flat JSON (default) — minimal fields, low token cost
 jira-cli issue get PROJ-123 --json
 jira-cli search "project = PROJ" --json | jq '.issues[].key'
 
-# Select only the fields you need
+# issue list returns a bare array; search wraps issues in pagination metadata
+# filter run with --fields also returns a bare trimmed array
+jira-cli issue list --project PROJ --json | jq '.[].key'
+jira-cli search "project = PROJ" --json | jq '.issues[].key'
+jira-cli filter run 12345 --json --fields key,summary | jq '.[].key'
+
+# Trim flat JSON output (issue get / issue list / sprint / filter run)
 jira-cli issue get PROJ-123 --json --fields key,summary,status,assignee
+
+# search --fields controls which fields Jira fetches (API request), not output trimming
+jira-cli search "project = PROJ" --fields summary,status,customfield_10001 --json
 
 # Raw Jira API response (full nested structure)
 jira-cli issue get PROJ-123 --json --raw
 
-# Clean output for scripts (suppress all non-JSON noise)
+# Clean output for scripts (suppress all non-JSON noise on stdout)
 jira-cli issue get PROJ-123 --json --quiet
 
 # Preview destructive operations without executing
 jira-cli issue delete PROJ-123 --dry-run --json
 ```
 
-Error responses include machine-readable error codes and actionable hints:
+### Verify connectivity (`doctor`)
+
+When using `--json`, check the `authValid` field (exit code 3 on auth/config failure):
+
+```bash
+jira-cli doctor --json | jq '.authValid'   # must be true
+```
+
+Error responses (stderr) include machine-readable error codes and actionable hints:
 
 ```json
 {
@@ -260,13 +292,15 @@ Credentials stored at `~/.jira-cli/config.json` (permissions: 0600):
 
 | Flag | Commands | Description |
 |---|---|---|
-| `--raw` | `issue get`, `issue list`, `search`, `sprint list`, `sprint issues`, `sprint active` | Return raw Jira API response instead of flat format |
-| `--fields` | `issue get`, `issue list`, `sprint list`, `sprint issues` | Output only specified fields (e.g. `--fields key,summary,status`) |
+| `--raw` | `issue get`, `issue list`, `search`, `filter run`, `sprint list`, `sprint issues`, `sprint active` | Return raw Jira API response instead of flat format |
+| `--fields` | `issue get`, `issue list`, `sprint list`, `sprint issues`, `filter run` | **Output trimming** — include only listed fields in flat JSON (e.g. `--fields key,summary,status`) |
+| `--fields` | `search` only | **Jira fetch fields** — comma-separated fields to request from the API (e.g. `--fields summary,status,customfield_10001`); does not trim flat output |
 
 ## Troubleshooting
 
 | Issue | Solution |
 |---|---|
+| npm install fails / curl not found | Ensure `curl` is on PATH (required by npm postinstall to download the binary) |
 | Config not found | Run `jira-cli login` or set `JIRA_HOST` and `JIRA_TOKEN` env vars |
 | Authentication failed | Regenerate PAT in your Jira DC profile settings |
 | Permission denied | Check your PAT scope and project permissions |

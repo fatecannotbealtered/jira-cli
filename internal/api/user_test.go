@@ -54,6 +54,36 @@ func TestUserSearchAssignable_Success(t *testing.T) {
 	}
 }
 
+func TestUserSearchAssignable_GetError(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Users.SearchAssignable("jane", "PROJ")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestUserSearchAssignable_InvalidJSON(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{invalid`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Users.SearchAssignable("jane", "PROJ")
+	if err == nil {
+		t.Fatal("expected parse error")
+	}
+	if !strings.Contains(err.Error(), "parsing assignable users") {
+		t.Errorf("error = %v", err)
+	}
+}
+
 func TestUserMe_Success(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasSuffix(r.URL.Path, "/myself") {
@@ -74,5 +104,65 @@ func TestUserMe_Success(t *testing.T) {
 	}
 	if myself.DisplayName != "Current User" {
 		t.Errorf("DisplayName = %q", myself.DisplayName)
+	}
+}
+
+func TestUserSearch_GetError(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Users.Search("john")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestUserSearch_InvalidJSON(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{invalid`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Users.Search("john")
+	if err == nil {
+		t.Fatal("expected parse error")
+	}
+	if !strings.Contains(err.Error(), "parsing users") {
+		t.Errorf("error = %v", err)
+	}
+}
+
+func TestUserMe_GetError(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Users.Me()
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestUserMe_InvalidJSON(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{invalid`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Users.Me()
+	if err == nil {
+		t.Fatal("expected parse error")
+	}
+	if !strings.Contains(err.Error(), "parsing myself") {
+		t.Errorf("error = %v", err)
 	}
 }

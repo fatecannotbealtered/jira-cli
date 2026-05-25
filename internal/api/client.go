@@ -25,6 +25,13 @@ func defaultUserAgent() string {
 	return "jira-cli"
 }
 
+var (
+	uploadOpenFile       = func(path string) (io.ReadCloser, error) { return os.Open(path) }
+	uploadCreateFormFile = func(w *multipart.Writer, fieldname, filename string) (io.Writer, error) {
+		return w.CreateFormFile(fieldname, filename)
+	}
+)
+
 func newHTTPClient() *http.Client {
 	return &http.Client{
 		Timeout: 30 * time.Second,
@@ -282,7 +289,7 @@ func (c *Client) Upload(ctx context.Context, path, filePath string) ([]byte, err
 		default:
 		}
 
-		f, err := os.Open(filePath)
+		f, err := uploadOpenFile(filePath)
 		if err != nil {
 			return nil, fmt.Errorf("opening file %s: %w", filePath, err)
 		}
@@ -290,7 +297,7 @@ func (c *Client) Upload(ctx context.Context, path, filePath string) ([]byte, err
 		var buf bytes.Buffer
 		w := multipart.NewWriter(&buf)
 
-		part, err := w.CreateFormFile("file", filepath.Base(filePath))
+		part, err := uploadCreateFormFile(w, "file", filepath.Base(filePath))
 		if err != nil {
 			_ = f.Close()
 			return nil, fmt.Errorf("creating form file: %w", err)

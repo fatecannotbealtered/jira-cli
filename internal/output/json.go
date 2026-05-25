@@ -6,9 +6,12 @@ import (
 	"os"
 )
 
+// jsonMarshalIndent is json.MarshalIndent; overridden in tests for error-path coverage.
+var jsonMarshalIndent = json.MarshalIndent
+
 // PrintJSON outputs v as indented JSON to stdout.
 func PrintJSON(v any) {
-	data, err := json.MarshalIndent(v, "", "  ")
+	data, err := jsonMarshalIndent(v, "", "  ")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "json marshal error: %v\n", err)
 		return
@@ -94,7 +97,7 @@ func PrintErrorJSON(msg string, statusCode int) {
 		ErrorCode:  code,
 		Hint:       HintForErrorCode(code),
 	}
-	data, err := json.MarshalIndent(payload, "", "  ")
+	data, err := jsonMarshalIndent(payload, "", "  ")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, `{"error": %q, "statusCode": %d, "errorCode": %q}`+"\n", msg, statusCode, code)
 		return
@@ -115,7 +118,7 @@ func PrintErrorJSONWithCode(msg string, statusCode int, code ErrorCode) {
 		ErrorCode:  code,
 		Hint:       HintForErrorCode(code),
 	}
-	data, err := json.MarshalIndent(payload, "", "  ")
+	data, err := jsonMarshalIndent(payload, "", "  ")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, `{"error": %q, "statusCode": %d, "errorCode": %q}`+"\n", msg, statusCode, code)
 		return

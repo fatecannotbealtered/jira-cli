@@ -185,3 +185,153 @@ func TestADFToText_RoundTrip(t *testing.T) {
 		}
 	}
 }
+
+func TestADFToText_Blockquote(t *testing.T) {
+	doc := buildDoc(map[string]any{
+		"type": "blockquote",
+		"content": []any{
+			paragraphNode(textNode("quoted line")),
+		},
+	})
+	want := "> quoted line"
+	if got := ADFToText(doc); got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestADFToText_Rule(t *testing.T) {
+	doc := buildDoc(map[string]any{"type": "rule"})
+	want := "---"
+	if got := ADFToText(doc); got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestADFToText_MentionDisplayNameFallback(t *testing.T) {
+	doc := buildDoc(paragraphNode(map[string]any{
+		"type":  "mention",
+		"attrs": map[string]any{"displayName": "Jane Smith"},
+	}))
+	want := "@Jane Smith"
+	if got := ADFToText(doc); got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestADFToText_EmojiWithoutColons(t *testing.T) {
+	doc := buildDoc(paragraphNode(map[string]any{
+		"type":  "emoji",
+		"attrs": map[string]any{"shortName": "thumbsup"},
+	}))
+	want := ":thumbsup:"
+	if got := ADFToText(doc); got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestADFToText_EmojiEmptyShortName(t *testing.T) {
+	doc := buildDoc(paragraphNode(map[string]any{
+		"type":  "emoji",
+		"attrs": map[string]any{"shortName": ""},
+	}))
+	if got := ADFToText(doc); got != "" {
+		t.Errorf("got %q, want empty", got)
+	}
+}
+
+func TestADFToText_UnknownNodeType(t *testing.T) {
+	doc := buildDoc(map[string]any{
+		"type":    "customPanel",
+		"content": []any{paragraphNode(textNode("nested"))},
+	})
+	want := "nested"
+	if got := ADFToText(doc); got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestADFToText_RenderChildrenSkipsNonMap(t *testing.T) {
+	doc := buildDoc(map[string]any{
+		"type":    "paragraph",
+		"content": []any{"not-a-map", textNode("kept")},
+	})
+	want := "kept"
+	if got := ADFToText(doc); got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestADFToText_ListItemDirect(t *testing.T) {
+	doc := buildDoc(listItemNode(paragraphNode(textNode("direct item"))))
+	want := "direct item"
+	if got := ADFToText(doc); got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func tableRowNode(cells ...any) map[string]any {
+	return map[string]any{"type": "tableRow", "content": cells}
+}
+
+func tableCellNode(content ...any) map[string]any {
+	return map[string]any{"type": "tableCell", "content": content}
+}
+
+func TestADFToText_Table(t *testing.T) {
+	doc := buildDoc(map[string]any{
+		"type": "table",
+		"content": []any{
+			tableRowNode(
+				tableCellNode(paragraphNode(textNode("A1"))),
+				tableCellNode(paragraphNode(textNode("B1"))),
+			),
+			tableRowNode(
+				tableCellNode(paragraphNode(textNode("A2"))),
+				tableCellNode(paragraphNode(textNode("B2"))),
+			),
+		},
+	})
+	want := "A1\tB1\nA2\tB2"
+	if got := ADFToText(doc); got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestADFToText_TableSkipsInvalidNodes(t *testing.T) {
+	doc := buildDoc(map[string]any{
+		"type": "table",
+		"content": []any{
+			"bad-row",
+			map[string]any{"type": "tableHeader", "content": []any{}},
+			tableRowNode(
+				"bad-cell",
+				tableCellNode(paragraphNode(textNode("only"))),
+			),
+		},
+	})
+	want := "only"
+	if got := ADFToText(doc); got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestADFToText_ListSkipsNonMapItem(t *testing.T) {
+	doc := buildDoc(bulletListNode(
+		"bad-item",
+		listItemNode(paragraphNode(textNode("ok"))),
+	))
+	want := "\u2022 ok"
+	if got := ADFToText(doc); got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestADFToText_InvalidContentType(t *testing.T) {
+	doc := buildDoc(map[string]any{
+		"type":    "paragraph",
+		"content": "not-an-array",
+	})
+	if got := ADFToText(doc); got != "" {
+		t.Errorf("got %q, want empty", got)
+	}
+}

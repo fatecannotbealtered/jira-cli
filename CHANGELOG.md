@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.3] - 2026-05-26
+
+### Fixed
+
+- **Semantic exit codes** — validation, auth, and config failures now return non-zero exit codes (via `SilentErr`); `doctor` and `login` work correctly in CI scripts.
+- **Audit logging on failed writes** — write commands are logged even when the operation fails.
+- **`FilterSprintFields`** — camelCase sprint fields (`startDate`, `endDate`) filter correctly with `--fields`.
+- **Config file corruption detection** — invalid JSON in `~/.jira-cli/config.json` returns a clear parse error.
+- **`issue edit --description`** — plain text is converted to ADF, matching `issue create`.
+- **Agile API pagination** — sprint/board list, backlog, epics, and epic issues fetch all pages instead of truncating at ~50 items.
+- **`ListWorklogs` pagination** — worklogs beyond the first page are included.
+- **`search --order-by`** — skips appending `ORDER BY` when JQL already contains one.
+- **`issue delete --dry-run`** — no longer prompts for confirmation before previewing.
+- **`issue bulk-transition`** — `skipped` and `failed` counts are reported separately in JSON output.
+- **E2E script** — sprint move (K7) runs before issue cleanup; `JIRA_E2E_CLEANUP=0` is honored.
+
+### Added
+
+- **`cmd.Run()` / `Main()`** — testable CLI entry point with correct exit code propagation.
+- **Comprehensive unit tests** — 100% statement coverage across all packages; httptest-based command integration tests.
+- **`internal/api/agile_page.go`** — shared pagination helper for Jira Agile API endpoints.
+
+### Changed
+
+- **Minimum Go version** — `go.mod` updated to Go 1.24 (uses `testing.T.Chdir` in tests).
+
+### Documentation
+
+- Clarify `search --fields` (Jira fetch) vs `issue get/list --fields` (output trimming).
+- Document `issue delete --dry-run` skips confirmation; remove misleading `sprint close --force` wording.
+- Add `epic list` / `epic issues` to README; document `filter run --raw/--fields`.
+- Document stdout (success JSON) vs stderr (error JSON); `doctor` exit code and `authValid` checks.
+- Note npm install requires `curl`; add `install-skill` and `issue list` vs `search` JSON/jq examples.
+
 ## [1.0.2] - 2026-05-14
 
 ### Fixed
@@ -73,7 +107,8 @@ Initial release of jira-cli for Jira Data Center.
 - SKILL.md with JSON output schemas, error codes, exit codes, and complete flag reference.
 - GitHub PR template for contributors.
 
-[Unreleased]: https://github.com/fatecannotbealtered/jira-cli/compare/v1.0.2...HEAD
+[Unreleased]: https://github.com/fatecannotbealtered/jira-cli/compare/v1.0.3...HEAD
+[1.0.3]: https://github.com/fatecannotbealtered/jira-cli/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/fatecannotbealtered/jira-cli/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/fatecannotbealtered/jira-cli/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/fatecannotbealtered/jira-cli/releases/tag/v1.0.0

@@ -13,12 +13,22 @@ import (
 // ansiEscapeRe matches ANSI escape sequences.
 var ansiEscapeRe = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
 
-// termWidth returns the terminal width, defaulting to 120 if unavailable.
-func termWidth() int {
-	if w, _, err := term.GetSize(int(os.Stdout.Fd())); err == nil && w > 0 {
+// termWidthFn returns terminal width; replaced in tests.
+var termWidthFn = defaultTermWidth
+
+// getTerminalSize wraps term.GetSize for test overrides.
+var getTerminalSize = term.GetSize
+
+func defaultTermWidth() int {
+	if w, _, err := getTerminalSize(int(os.Stdout.Fd())); err == nil && w > 0 {
 		return w
 	}
 	return 120
+}
+
+// termWidth returns the terminal width, defaulting to 120 if unavailable.
+func termWidth() int {
+	return termWidthFn()
 }
 
 // runeWidth calculates the display width of a string (CJK characters count as 2 columns, others as 1).
@@ -83,6 +93,14 @@ func truncate(s string, maxWidth int) string {
 	}
 	buf.WriteRune('\u2026')
 	return buf.String()
+}
+
+func clampPadding(colWidth, displayWidth int) int {
+	padding := colWidth - displayWidth
+	if padding < 0 {
+		return 0
+	}
+	return padding
 }
 
 // Table prints a bordered, colored table.
@@ -180,10 +198,7 @@ func Table(headers []string, rows [][]string) {
 
 			// Right-pad with spaces (based on display width)
 			displayWidth := runeWidth(stripAnsi(cell))
-			padding := colWidths[i] - displayWidth
-			if padding < 0 {
-				padding = 0
-			}
+			padding := clampPadding(colWidths[i], displayWidth)
 
 			sb.WriteString(" ")
 			sb.WriteString(cell)

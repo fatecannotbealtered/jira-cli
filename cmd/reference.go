@@ -8,6 +8,52 @@ import (
 	"github.com/spf13/pflag"
 )
 
+type referenceFlag struct {
+	Name    string
+	Type    string
+	Default string
+	Usage   string
+}
+
+func formatFlagDefault(def string) string {
+	if def == "" || def == "[]" {
+		return "-"
+	}
+	return def
+}
+
+func collectReferenceFlags(local, persistent *pflag.FlagSet, inheritPersistent bool) []referenceFlag {
+	var flags []referenceFlag
+	local.VisitAll(func(f *pflag.Flag) {
+		if f.Hidden {
+			return
+		}
+		flags = append(flags, referenceFlag{
+			Name:    f.Name,
+			Type:    f.Value.Type(),
+			Default: formatFlagDefault(f.DefValue),
+			Usage:   f.Usage,
+		})
+	})
+	if inheritPersistent {
+		persistent.VisitAll(func(f *pflag.Flag) {
+			if f.Hidden {
+				return
+			}
+			if local.Lookup(f.Name) != nil {
+				return
+			}
+			flags = append(flags, referenceFlag{
+				Name:    f.Name,
+				Type:    f.Value.Type(),
+				Default: formatFlagDefault(f.DefValue),
+				Usage:   f.Usage,
+			})
+		})
+	}
+	return flags
+}
+
 var referenceCmd = &cobra.Command{
 	Use:   "reference",
 	Short: "Print all commands and flags in a structured format",
@@ -50,44 +96,7 @@ func walkCommands(cmd *cobra.Command, lines *[]string, prefix string) {
 		*lines = append(*lines, "")
 	}
 
-	// Collect flags
-	local := cmd.LocalFlags()
-	persistent := cmd.PersistentFlags()
-
-	type flagInfo struct {
-		Name    string
-		Type    string
-		Default string
-		Usage   string
-	}
-	var flags []flagInfo
-
-	local.VisitAll(func(f *pflag.Flag) {
-		if f.Hidden {
-			return
-		}
-		def := f.DefValue
-		if def == "" || def == "[]" {
-			def = "-"
-		}
-		flags = append(flags, flagInfo{f.Name, f.Value.Type(), def, f.Usage})
-	})
-
-	if cmd.Parent() != nil {
-		persistent.VisitAll(func(f *pflag.Flag) {
-			if f.Hidden {
-				return
-			}
-			if local.Lookup(f.Name) != nil {
-				return
-			}
-			def := f.DefValue
-			if def == "" || def == "[]" {
-				def = "-"
-			}
-			flags = append(flags, flagInfo{f.Name, f.Value.Type(), def, f.Usage})
-		})
-	}
+	flags := collectReferenceFlags(cmd.LocalFlags(), cmd.PersistentFlags(), cmd.Parent() != nil)
 
 	if len(flags) > 0 {
 		*lines = append(*lines, "### Flags")
@@ -100,7 +109,6 @@ func walkCommands(cmd *cobra.Command, lines *[]string, prefix string) {
 		*lines = append(*lines, "")
 	}
 
-	// Subcommands
 	children := cmd.Commands()
 	if len(children) > 0 {
 		sort.Slice(children, func(i, j int) bool {

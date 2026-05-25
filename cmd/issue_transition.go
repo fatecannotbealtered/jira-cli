@@ -53,7 +53,7 @@ var issueTransitionCmd = &cobra.Command{
 			for _, t := range transitions {
 				fmt.Printf("  → %s → %s\n", t.Name, t.To.Name)
 			}
-			return ErrSilent
+			return SilentErr(ExitBadArgs)
 		}
 
 		if dryRunOutput("transition issue", map[string]any{"key": key, "from": fromStatus, "to": targetTransition.To.Name}) {

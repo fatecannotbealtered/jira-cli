@@ -70,7 +70,7 @@ var sprintListCmd = &cobra.Command{
 		boardID, _ := cmd.Flags().GetInt("board")
 		if boardID == 0 {
 			output.Error("--board is required")
-			return ErrSilent
+			return SilentErr(ExitBadArgs)
 		}
 		state, _ := cmd.Flags().GetString("state")
 		sprints, err := client.Sprints.List(boardID, state)
@@ -103,7 +103,7 @@ var sprintActiveCmd = &cobra.Command{
 		boardID, _ := cmd.Flags().GetInt("board")
 		if boardID == 0 {
 			output.Error("--board is required")
-			return ErrSilent
+			return SilentErr(ExitBadArgs)
 		}
 		sprints, err := client.Sprints.List(boardID, "active")
 		if err != nil {
@@ -175,7 +175,7 @@ var sprintIssuesCmd = &cobra.Command{
 		sprintID, _ := cmd.Flags().GetInt("sprint")
 		if sprintID == 0 {
 			output.Error("--sprint is required")
-			return ErrSilent
+			return SilentErr(ExitBadArgs)
 		}
 		issues, err := client.Sprints.GetIssues(sprintID)
 		if err != nil {
@@ -208,7 +208,7 @@ var sprintCreateCmd = &cobra.Command{
 		name, _ := cmd.Flags().GetString("name")
 		if boardID == 0 || name == "" {
 			output.Error("--board and --name are required")
-			return ErrSilent
+			return SilentErr(ExitBadArgs)
 		}
 		req := api.CreateSprintRequest{
 			Name:          name,
@@ -250,7 +250,7 @@ var sprintUpdateCmd = &cobra.Command{
 		sprintID, _ := cmd.Flags().GetInt("sprint")
 		if sprintID == 0 {
 			output.Error("--sprint is required")
-			return ErrSilent
+			return SilentErr(ExitBadArgs)
 		}
 		req := api.UpdateSprintRequest{}
 		if n, _ := cmd.Flags().GetString("name"); n != "" {
@@ -292,7 +292,7 @@ var sprintCloseCmd = &cobra.Command{
 		sprintID, _ := cmd.Flags().GetInt("sprint")
 		if sprintID == 0 {
 			output.Error("--sprint is required")
-			return ErrSilent
+			return SilentErr(ExitBadArgs)
 		}
 		sprint, err := client.Sprints.Get(sprintID)
 		if err != nil {
@@ -329,7 +329,7 @@ var sprintMoveCmd = &cobra.Command{
 		issuesStr, _ := cmd.Flags().GetString("issues")
 		if sprintID == 0 || issuesStr == "" {
 			output.Error("--sprint and --issues are required")
-			return ErrSilent
+			return SilentErr(ExitBadArgs)
 		}
 		issueKeys := strings.Split(issuesStr, ",")
 		for i, k := range issueKeys {

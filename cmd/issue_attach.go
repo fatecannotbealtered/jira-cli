@@ -26,7 +26,7 @@ var issueAttachCmd = &cobra.Command{
 		filePath, _ := cmd.Flags().GetString("file")
 		if filePath == "" {
 			output.Error("--file is required")
-			return ErrSilent
+			return SilentErr(ExitBadArgs)
 		}
 		if dryRunOutput("upload attachment", map[string]any{"key": args[0], "file": filePath}) {
 			return nil

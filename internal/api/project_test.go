@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -101,5 +102,175 @@ func TestProjectGetVersions_FilterReleased(t *testing.T) {
 	}
 	if len(versions) != 2 {
 		t.Errorf("no filter: expected 2, got %d", len(versions))
+	}
+}
+
+func TestProjectList_FilterByType(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `[
+			{"id":"1","key":"PROJ","name":"My Project","projectTypeKey":"software"},
+			{"id":"2","key":"OPS","name":"Operations","projectTypeKey":"business"}
+		]`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	projects, err := c.Projects.List("software")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(projects) != 1 || projects[0].Key != "PROJ" {
+		t.Fatalf("got %+v", projects)
+	}
+}
+
+func TestProjectList_GetError(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Projects.List("")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestProjectList_InvalidJSON(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{invalid`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Projects.List("")
+	if err == nil {
+		t.Fatal("expected parse error")
+	}
+	if !strings.Contains(err.Error(), "parsing projects") {
+		t.Errorf("error = %v", err)
+	}
+}
+
+func TestProjectGet_NotFound(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Projects.Get("MISSING")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestProjectGet_InvalidJSON(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{invalid`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Projects.Get("PROJ")
+	if err == nil {
+		t.Fatal("expected parse error")
+	}
+	if !strings.Contains(err.Error(), "parsing project") {
+		t.Errorf("error = %v", err)
+	}
+}
+
+func TestProjectGetComponents_GetError(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Projects.GetComponents("PROJ")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestProjectGetComponents_InvalidJSON(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{invalid`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Projects.GetComponents("PROJ")
+	if err == nil {
+		t.Fatal("expected parse error")
+	}
+	if !strings.Contains(err.Error(), "parsing components") {
+		t.Errorf("error = %v", err)
+	}
+}
+
+func TestProjectGetVersions_GetError(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Projects.GetVersions("PROJ", false, false)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestProjectGetVersions_InvalidJSON(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{invalid`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Projects.GetVersions("PROJ", false, false)
+	if err == nil {
+		t.Fatal("expected parse error")
+	}
+	if !strings.Contains(err.Error(), "parsing versions") {
+		t.Errorf("error = %v", err)
+	}
+}
+
+func TestProjectGetIssueTypes_Success(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{"id":"1","key":"PROJ","name":"My Project","issueTypes":[{"id":"1","name":"Story"},{"id":"2","name":"Bug"}]}`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	types, err := c.Projects.GetIssueTypes("PROJ")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(types) != 2 || types[0].Name != "Story" {
+		t.Fatalf("got %+v", types)
+	}
+}
+
+func TestProjectGetIssueTypes_GetError(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Projects.GetIssueTypes("PROJ")
+	if err == nil {
+		t.Fatal("expected error")
 	}
 }

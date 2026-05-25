@@ -108,7 +108,35 @@ func SprintToMap(s FlatSprint) map[string]any {
 	return m
 }
 
+// sprintCanonicalKey maps a normalized (lowercase) sprint field name to its
+// canonical output key (camelCase where applicable, matching FlatSprint JSON tags).
+func sprintCanonicalKey(normalized string) string {
+	switch normalized {
+	case "startdate":
+		return "startDate"
+	case "enddate":
+		return "endDate"
+	default:
+		return normalized
+	}
+}
+
+// lookupSprintField resolves a requested field name against a SprintToMap result.
+// Lookup is case-insensitive; returned keys use canonical camelCase.
+func lookupSprintField(m map[string]any, name string) (canonicalKey string, value any, ok bool) {
+	normalized := strings.TrimSpace(strings.ToLower(name))
+	if normalized == "" {
+		return "", nil, false
+	}
+	canon := sprintCanonicalKey(normalized)
+	if v, found := m[canon]; found {
+		return canon, v, true
+	}
+	return "", nil, false
+}
+
 // FilterSprintFields filters a FlatSprint to only the specified field names.
+// Field names are case-insensitive. Output keys use canonical camelCase.
 func FilterSprintFields(s FlatSprint, fieldNames []string) map[string]any {
 	m := SprintToMap(s)
 	if len(fieldNames) == 0 {
@@ -116,8 +144,7 @@ func FilterSprintFields(s FlatSprint, fieldNames []string) map[string]any {
 	}
 	result := make(map[string]any, len(fieldNames))
 	for _, name := range fieldNames {
-		key := strings.TrimSpace(strings.ToLower(name))
-		if v, ok := m[key]; ok {
+		if key, v, ok := lookupSprintField(m, name); ok {
 			result[key] = v
 		}
 	}

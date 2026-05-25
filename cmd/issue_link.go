@@ -39,12 +39,12 @@ var issueLinkCmd = &cobra.Command{
 		to, _ := cmd.Flags().GetString("to")
 		if to == "" {
 			output.Error("--to is required")
-			return ErrSilent
+			return SilentErr(ExitBadArgs)
 		}
 		linkType, _ := cmd.Flags().GetString("type")
 		if linkType == "" {
 			output.Error("--type is required (use 'jira-cli issue link-types' to see available types)")
-			return ErrSilent
+			return SilentErr(ExitBadArgs)
 		}
 
 		req := api.IssueLinkRequest{
@@ -122,7 +122,7 @@ var issueRemoteLinkCmd = &cobra.Command{
 		title, _ := cmd.Flags().GetString("title")
 		if u == "" || title == "" {
 			output.Error("--url and --title are required")
-			return ErrSilent
+			return SilentErr(ExitBadArgs)
 		}
 		req := api.RemoteLinkRequest{Object: api.RemoteLinkObject{URL: u, Title: title}}
 		if dryRunOutput("add remote link", map[string]any{"key": args[0], "url": u, "title": title}) {

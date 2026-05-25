@@ -48,7 +48,7 @@ var issueBulkTransitionCmd = &cobra.Command{
 			}
 		} else {
 			output.Error("--issues or --jql is required")
-			return ErrSilent
+			return SilentErr(ExitBadArgs)
 		}
 
 		if len(issueKeys) == 0 {
@@ -67,6 +67,7 @@ var issueBulkTransitionCmd = &cobra.Command{
 		}
 		var results []result
 		successCount := 0
+		skipCount := 0
 		failCount := 0
 
 		for _, key := range issueKeys {
@@ -89,7 +90,7 @@ var issueBulkTransitionCmd = &cobra.Command{
 
 			if transitionID == "" {
 				results = append(results, result{Key: key, Status: "skipped", Error: fmt.Sprintf("status %q not available", targetStatus)})
-				failCount++
+				skipCount++
 				continue
 			}
 
@@ -108,6 +109,7 @@ var issueBulkTransitionCmd = &cobra.Command{
 				"targetStatus": targetStatus,
 				"total":        len(issueKeys),
 				"success":      successCount,
+				"skipped":      skipCount,
 				"failed":       failCount,
 				"results":      results,
 			})
@@ -122,7 +124,7 @@ var issueBulkTransitionCmd = &cobra.Command{
 			}
 		}
 		fmt.Println()
-		output.Info(fmt.Sprintf("Done: %d succeeded, %d failed (of %d total)", successCount, failCount, len(issueKeys)))
+		output.Info(fmt.Sprintf("Done: %d succeeded, %d skipped, %d failed (of %d total)", successCount, skipCount, failCount, len(issueKeys)))
 		return nil
 	},
 }

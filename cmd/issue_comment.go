@@ -41,7 +41,7 @@ var commentAddCmd = &cobra.Command{
 		body, _ := cmd.Flags().GetString("body")
 		if body == "" {
 			output.Error("--body cannot be empty")
-			return ErrSilent
+			return SilentErr(ExitBadArgs)
 		}
 		if dryRunOutput("add comment", map[string]any{"key": args[0]}) {
 			return nil
@@ -107,7 +107,7 @@ var commentDeleteCmd = &cobra.Command{
 		id, _ := cmd.Flags().GetString("id")
 		if id == "" {
 			output.Error("--id is required")
-			return ErrSilent
+			return SilentErr(ExitBadArgs)
 		}
 		if dryRunOutput("delete comment", map[string]any{"key": args[0], "commentId": id}) {
 			return nil

@@ -134,6 +134,9 @@ func (a *IssueAPI) Create(req CreateIssueRequest) (*IssueRef, error) {
 
 // Edit updates issue fields.
 func (a *IssueAPI) Edit(key string, req EditIssueRequest) error {
+	if desc, ok := req.Fields.Description.(string); ok && desc != "" {
+		req.Fields.Description = TextToADF(desc)
+	}
 	path := a.client.restPath(fmt.Sprintf("/issue/%s", url.PathEscape(key)))
 	_, err := a.client.Put(path, req)
 	return err
@@ -303,16 +306,27 @@ func (a *IssueAPI) AddWorklog(key, timeStr, started, comment string) (*Worklog, 
 
 // ListWorklogs lists worklog entries.
 func (a *IssueAPI) ListWorklogs(key string) ([]Worklog, error) {
-	path := a.client.restPath(fmt.Sprintf("/issue/%s/worklog", url.PathEscape(key)))
-	data, err := a.client.Get(path)
-	if err != nil {
-		return nil, err
+	const pageSize = 100
+	var allWorklogs []Worklog
+	startAt := 0
+	for {
+		path := a.client.restPath(fmt.Sprintf("/issue/%s/worklog?startAt=%d&maxResults=%d",
+			url.PathEscape(key), startAt, pageSize))
+		data, err := a.client.Get(path)
+		if err != nil {
+			return nil, err
+		}
+		var page WorklogPage
+		if err := json.Unmarshal(data, &page); err != nil {
+			return nil, fmt.Errorf("parsing worklogs: %w", err)
+		}
+		allWorklogs = append(allWorklogs, page.Worklogs...)
+		if len(page.Worklogs) == 0 || startAt+len(page.Worklogs) >= page.Total {
+			break
+		}
+		startAt += len(page.Worklogs)
 	}
-	var page WorklogPage
-	if err := json.Unmarshal(data, &page); err != nil {
-		return nil, fmt.Errorf("parsing worklogs: %w", err)
-	}
-	return page.Worklogs, nil
+	return allWorklogs, nil
 }
 
 // CreateLink creates an issue link.

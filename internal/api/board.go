@@ -9,7 +9,6 @@ import (
 
 // List returns all boards, optionally filtered by project and type.
 func (a *BoardAPI) List(project, boardType string) ([]Board, error) {
-	path := "/rest/agile/1.0/board"
 	params := url.Values{}
 	if project != "" {
 		params.Set("projectKeyOrId", project)
@@ -17,18 +16,7 @@ func (a *BoardAPI) List(project, boardType string) ([]Board, error) {
 	if boardType != "" {
 		params.Set("type", boardType)
 	}
-	if len(params) > 0 {
-		path += "?" + params.Encode()
-	}
-	data, err := a.client.Get(path)
-	if err != nil {
-		return nil, err
-	}
-	var page BoardPage
-	if err := json.Unmarshal(data, &page); err != nil {
-		return nil, fmt.Errorf("parsing boards: %w", err)
-	}
-	return page.Values, nil
+	return a.client.fetchAllBoardPages("/rest/agile/1.0/board", params)
 }
 
 // Get returns a single board by ID.
@@ -47,38 +35,27 @@ func (a *BoardAPI) Get(boardID int) (*Board, error) {
 
 // GetBacklog returns all issues in the board backlog.
 func (a *BoardAPI) GetBacklog(boardID int) ([]Issue, error) {
-	path := fmt.Sprintf("/rest/agile/1.0/board/%d/backlog", boardID)
-	data, err := a.client.Get(path)
-	if err != nil {
-		return nil, err
-	}
-	var result struct {
-		Issues []Issue `json:"issues"`
-	}
-	if err := json.Unmarshal(data, &result); err != nil {
-		return nil, fmt.Errorf("parsing backlog: %w", err)
-	}
-	return result.Issues, nil
+	basePath := fmt.Sprintf("/rest/agile/1.0/board/%d/backlog", boardID)
+	return a.client.fetchAllIssuePages(basePath, nil)
 }
 
 // GetEpics returns all epics on a board. If done is true, only completed epics are returned.
 func (a *BoardAPI) GetEpics(boardID int, done bool) ([]Issue, error) {
-	path := fmt.Sprintf("/rest/agile/1.0/board/%d/epic", boardID)
+	basePath := fmt.Sprintf("/rest/agile/1.0/board/%d/epic", boardID)
+	params := url.Values{}
 	if done {
-		path += "?done=true"
+		params.Set("done", "true")
 	}
-	data, err := a.client.Get(path)
+	rawValues, err := a.client.fetchAllEpicValuePages(basePath, params)
 	if err != nil {
 		return nil, err
 	}
-	var result struct {
-		Values []json.RawMessage `json:"values"`
-	}
-	if err := json.Unmarshal(data, &result); err != nil {
-		return nil, fmt.Errorf("parsing epics: %w", err)
-	}
-	epics := make([]Issue, 0, len(result.Values))
-	for _, raw := range result.Values {
+	return parseEpicValues(rawValues)
+}
+
+func parseEpicValues(rawValues []json.RawMessage) ([]Issue, error) {
+	epics := make([]Issue, 0, len(rawValues))
+	for _, raw := range rawValues {
 		var issue Issue
 		if err := json.Unmarshal(raw, &issue); err == nil {
 			epics = append(epics, issue)
@@ -131,33 +108,16 @@ func firstNonEmpty(values ...string) string {
 
 // GetSprints returns all sprints for a board.
 func (a *BoardAPI) GetSprints(boardID int, state string) ([]Sprint, error) {
-	path := fmt.Sprintf("/rest/agile/1.0/board/%d/sprint", boardID)
+	basePath := fmt.Sprintf("/rest/agile/1.0/board/%d/sprint", boardID)
+	params := url.Values{}
 	if state != "" {
-		path += "?state=" + url.QueryEscape(state)
+		params.Set("state", state)
 	}
-	data, err := a.client.Get(path)
-	if err != nil {
-		return nil, err
-	}
-	var page SprintPage
-	if err := json.Unmarshal(data, &page); err != nil {
-		return nil, fmt.Errorf("parsing board sprints: %w", err)
-	}
-	return page.Values, nil
+	return a.client.fetchAllSprintPages(basePath, params)
 }
 
 // GetEpicIssues returns issues belonging to an Agile epic ID.
 func (a *BoardAPI) GetEpicIssues(epicID string) ([]Issue, error) {
-	path := fmt.Sprintf("/rest/agile/1.0/epic/%s/issue", url.PathEscape(epicID))
-	data, err := a.client.Get(path)
-	if err != nil {
-		return nil, err
-	}
-	var result struct {
-		Issues []Issue `json:"issues"`
-	}
-	if err := json.Unmarshal(data, &result); err != nil {
-		return nil, fmt.Errorf("parsing epic issues: %w", err)
-	}
-	return result.Issues, nil
+	basePath := fmt.Sprintf("/rest/agile/1.0/epic/%s/issue", url.PathEscape(epicID))
+	return a.client.fetchAllIssuePages(basePath, nil)
 }

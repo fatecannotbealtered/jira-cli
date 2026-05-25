@@ -10,6 +10,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var osExecutable = os.Executable
+var copyFileFn = copyFile
+var filepathWalk = filepath.Walk
+
 var installSkillCmd = &cobra.Command{
 	Use:   "install-skill",
 	Short: "Install the bundled AI Agent Skill",
@@ -39,33 +43,33 @@ func findSkillsDir(execDir string) string {
 }
 
 func runInstallSkill(cmd *cobra.Command, args []string) error {
-	execPath, err := os.Executable()
+	execPath, err := osExecutable()
 	if err != nil {
 		output.Error("failed to locate binary: " + err.Error())
-		return ErrSilent
+		return SilentErr(ExitBadArgs)
 	}
 	execDir := filepath.Dir(execPath)
 	skillsDir := findSkillsDir(execDir)
 	if skillsDir == "" {
 		output.Error("no skill files found to install")
-		return ErrSilent
+		return SilentErr(ExitBadArgs)
 	}
 
 	// Target directory
 	home, err := os.UserHomeDir()
 	if err != nil {
 		output.Error("failed to get home directory: " + err.Error())
-		return ErrSilent
+		return SilentErr(ExitBadArgs)
 	}
 	targetDir := filepath.Join(home, ".openclaw", "skills")
 	if err := os.MkdirAll(targetDir, 0755); err != nil {
 		output.Error("failed to create target directory: " + err.Error())
-		return ErrSilent
+		return SilentErr(ExitBadArgs)
 	}
 
 	// Walk and copy files
 	var installedFiles []string
-	err = filepath.Walk(skillsDir, func(path string, info os.FileInfo, err error) error {
+	err = filepathWalk(skillsDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -85,7 +89,7 @@ func runInstallSkill(cmd *cobra.Command, args []string) error {
 		updated := existErr == nil
 
 		// Copy file
-		if err := copyFile(path, destPath); err != nil {
+		if err := copyFileFn(path, destPath); err != nil {
 			return fmt.Errorf("copying %s: %w", rel, err)
 		}
 
@@ -100,12 +104,12 @@ func runInstallSkill(cmd *cobra.Command, args []string) error {
 
 	if err != nil {
 		output.Error("install failed: " + err.Error())
-		return ErrSilent
+		return SilentErr(ExitBadArgs)
 	}
 
 	if len(installedFiles) == 0 {
 		output.Error("no skill files found to install")
-		return ErrSilent
+		return SilentErr(ExitBadArgs)
 	}
 
 	if jsonMode {

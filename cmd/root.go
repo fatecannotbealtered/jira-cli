@@ -60,6 +60,9 @@ func setExitCode(code int) {
 	}
 }
 
+// execCmd tracks the leaf command during Execute for post-run audit logging.
+var execCmd *cobra.Command
+
 var rootCmd = &cobra.Command{
 	Use:           "jira-cli",
 	Short:         "Full-featured Jira Data Center CLI for humans and AI Agents",
@@ -90,23 +93,23 @@ func init() {
 	})
 
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+		lastExit = 0
 		cmdStartTime = time.Now()
-		return nil
-	}
-
-	rootCmd.PersistentPostRunE = func(cmd *cobra.Command, args []string) error {
-		if !isWriteCommand(cmd) {
-			return nil
-		}
-		duration := time.Since(cmdStartTime)
-		audit.Log(cmd.CommandPath(), os.Args[1:], lastExit, duration.Milliseconds())
+		execCmd = cmd
 		return nil
 	}
 }
 
 // Execute runs the root command.
 func Execute() error {
-	return rootCmd.Execute()
+	lastExit = 0
+	execCmd = nil
+	err := rootCmd.Execute()
+	if execCmd != nil && isWriteCommand(execCmd) {
+		duration := time.Since(cmdStartTime)
+		audit.Log(execCmd.CommandPath(), os.Args[1:], lastExit, duration.Milliseconds())
+	}
+	return err
 }
 
 // handleAPIError handles API errors with JSON mode support.

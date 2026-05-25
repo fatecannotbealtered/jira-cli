@@ -106,12 +106,12 @@ var issueListCmd = &cobra.Command{
 		project, _ := cmd.Flags().GetString("project")
 		if project == "" {
 			output.Error("--project is required")
-			return ErrSilent
+			return SilentErr(ExitBadArgs)
 		}
 		limit, _ := cmd.Flags().GetInt("limit")
 		if limit < 1 || limit > 100 {
 			output.Error("--limit must be between 1 and 100")
-			return ErrSilent
+			return SilentErr(ExitBadArgs)
 		}
 		opts := api.IssueListOptions{
 			Project:  project,
@@ -154,7 +154,7 @@ var issueCreateCmd = &cobra.Command{
 		summary, _ := cmd.Flags().GetString("summary")
 		if project == "" || summary == "" {
 			output.Error("--project and --summary are required")
-			return ErrSilent
+			return SilentErr(ExitBadArgs)
 		}
 
 		issueType, _ := cmd.Flags().GetString("type")
@@ -304,7 +304,7 @@ var issueEditCmd = &cobra.Command{
 		}
 		if !hasUpdate {
 			output.Error("no fields to update")
-			return ErrSilent
+			return SilentErr(ExitBadArgs)
 		}
 
 		if dryRunOutput("edit issue", map[string]any{"key": args[0]}) {
@@ -357,12 +357,12 @@ var issueDeleteCmd = &cobra.Command{
 			return err
 		}
 		key := args[0]
-		if !confirmAction(fmt.Sprintf("Type the issue key to confirm deletion (%s)", key), key) {
-			output.Warn("Deletion cancelled.")
-			return ErrSilent
-		}
 		if dryRunOutput("delete issue", map[string]any{"key": key}) {
 			return nil
+		}
+		if !confirmAction(fmt.Sprintf("Type the issue key to confirm deletion (%s)", key), key) {
+			output.Warn("Deletion cancelled.")
+			return SilentErr(ExitBadArgs)
 		}
 		if err := client.Issues.Delete(key); err != nil {
 			return handleAPIError(err, jsonMode)

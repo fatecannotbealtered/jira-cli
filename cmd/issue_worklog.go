@@ -35,7 +35,7 @@ var worklogAddCmd = &cobra.Command{
 		timeStr, _ := cmd.Flags().GetString("time")
 		if timeStr == "" {
 			output.Error("--time is required (e.g. 1h30m, 2h, 30m)")
-			return ErrSilent
+			return SilentErr(ExitBadArgs)
 		}
 		started, _ := cmd.Flags().GetString("started")
 		comment, _ := cmd.Flags().GetString("comment")

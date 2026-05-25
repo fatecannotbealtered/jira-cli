@@ -41,7 +41,7 @@ func runDoctor(_ *cobra.Command, _ []string) error {
 		} else {
 			output.Error("Reading config: " + err.Error())
 		}
-		return ErrSilent
+		return SilentErr(ExitAuth)
 	}
 
 	if cfg.Host == "" || cfg.Token == "" {
@@ -57,7 +57,7 @@ func runDoctor(_ *cobra.Command, _ []string) error {
 			output.Error("Not configured. Run 'jira-cli login' or set JIRA_HOST and JIRA_TOKEN env vars.")
 			fmt.Println()
 		}
-		return ErrSilent
+		return SilentErr(ExitAuth)
 	}
 	result.ConfigExists = true
 	result.Host = cfg.Host
@@ -81,7 +81,7 @@ func runDoctor(_ *cobra.Command, _ []string) error {
 			output.Error("Connection failed: " + err.Error())
 			fmt.Println()
 		}
-		return ErrSilent
+		return SilentErr(ExitAuth)
 	}
 
 	result.AuthValid = true

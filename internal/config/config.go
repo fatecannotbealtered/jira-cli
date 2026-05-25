@@ -9,6 +9,11 @@ import (
 	"strings"
 )
 
+var (
+	configMarshalIndent = json.MarshalIndent
+	configRemove        = os.Remove
+)
+
 // Config stores Jira Data Center authentication information.
 type Config struct {
 	Host  string `json:"host"`
@@ -38,7 +43,9 @@ func Load() (*Config, error) {
 	// 1. Try config file
 	data, err := os.ReadFile(FilePath())
 	if err == nil {
-		_ = json.Unmarshal(data, cfg)
+		if err := json.Unmarshal(data, cfg); err != nil {
+			return nil, fmt.Errorf("parsing config %s: %w", FilePath(), err)
+		}
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("reading config: %w", err)
 	}
@@ -61,7 +68,7 @@ func Save(cfg *Config) error {
 		return fmt.Errorf("creating config dir: %w", err)
 	}
 
-	data, err := json.MarshalIndent(cfg, "", "  ")
+	data, err := configMarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encoding config: %w", err)
 	}
@@ -93,7 +100,7 @@ func MustLoad() (*Config, error) {
 
 // Delete removes the configuration file (used for logout).
 func Delete() error {
-	err := os.Remove(FilePath())
+	err := configRemove(FilePath())
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("deleting config: %w", err)
 	}

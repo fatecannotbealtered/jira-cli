@@ -1,19 +1,18 @@
 package main
 
 import (
-	"errors"
-	"fmt"
 	"os"
 
 	"github.com/fatecannotbealtered/jira-cli/cmd"
 )
 
 func main() {
-	if err := cmd.Execute(); err != nil {
-		if errors.Is(err, cmd.ErrSilent) {
-			os.Exit(cmd.LastExitCode())
-		}
-		fmt.Fprintln(os.Stderr, "Error:", err)
-		os.Exit(cmd.ExitBadArgs)
-	}
+	exitFn(Main())
+}
+
+var exitFn = os.Exit
+
+// Main runs the CLI and returns the exit code (testable entry point).
+func Main() int {
+	return cmd.Run()
 }

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/fatecannotbealtered/jira-cli/internal/api"
@@ -26,6 +27,12 @@ func init() {
 	rootCmd.AddCommand(searchCmd)
 }
 
+var jqlOrderByRe = regexp.MustCompile(`(?i)\border\s+by\b`)
+
+func jqlHasOrderBy(jql string) bool {
+	return jqlOrderByRe.MatchString(jql)
+}
+
 func runSearch(cmd *cobra.Command, args []string) error {
 	client, _, err := newClient()
 	if err != nil {
@@ -35,13 +42,13 @@ func runSearch(cmd *cobra.Command, args []string) error {
 	jql := args[0]
 	if jql == "" {
 		output.Error("JQL query cannot be empty")
-		return ErrSilent
+		return SilentErr(ExitBadArgs)
 	}
 
 	limit, _ := cmd.Flags().GetInt("limit")
 	if limit < 1 || limit > 500 {
 		output.Error("--limit must be between 1 and 500")
-		return ErrSilent
+		return SilentErr(ExitBadArgs)
 	}
 
 	fieldsStr, _ := cmd.Flags().GetString("fields")
@@ -53,7 +60,7 @@ func runSearch(cmd *cobra.Command, args []string) error {
 	}
 
 	orderBy, _ := cmd.Flags().GetString("order-by")
-	if orderBy != "" {
+	if orderBy != "" && !jqlHasOrderBy(jql) {
 		jql += " ORDER BY " + orderBy
 	}
 

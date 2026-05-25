@@ -37,14 +37,14 @@
   .\scripts\e2e-full.ps1
 
 .NOTES
-  Environment variables:
-    JIRA_HOST         - Jira DC host URL (required if not passed as parameter)
-    JIRA_TOKEN        - PAT (required if not passed as parameter)
-    JIRA_CLI_BIN      - Path to jira-cli binary (default: "jira-cli")
-    JIRA_E2E_PROJECT  - Project key (default: auto-detect)
-    JIRA_E2E_MUTATE   - "0" to skip write tests (default: "1")
-    JIRA_E2E_SPRINT   - "1" to enable sprint write tests (default: "0")
-    JIRA_E2E_CLEANUP  - "0" to keep test resources (default: "1")
+  Environment variables (all optional unless noted):
+    JIRA_HOST         - Jira DC host URL (required if -JiraHost not set)
+    JIRA_TOKEN        - Personal Access Token (required if -JiraToken not set)
+    JIRA_CLI_BIN      - Path to jira-cli binary (default: "jira-cli" on PATH)
+    JIRA_E2E_PROJECT  - Project key override (default: auto-detect from project list)
+    JIRA_E2E_MUTATE   - "0" = read-only, skip write phases I–K (default: "1")
+    JIRA_E2E_SPRINT   - "1" = run sprint write tests K5–K8 (default: "0")
+    JIRA_E2E_CLEANUP  - "0" = keep created issues/filters, skip J3/J4 cleanup (default: "1")
 #>
 
 param(
@@ -308,10 +308,10 @@ $script:JiraBin = if ($Binary) { $Binary }
                   elseif ($env:JIRA_CLI_BIN) { $env:JIRA_CLI_BIN }
                   else { "jira-cli" }
 
-# Resolve mode flags
-$mutate    = ($env:JIRA_E2E_MUTATE  -ne "0")   # default: on
-$sprintW   = ($env:JIRA_E2E_SPRINT  -eq "1")   # default: off
-$cleanup   = ($env:JIRA_E2E_CLEANUP -ne "0")    # default: on
+# Resolve mode flags (see .NOTES for env var semantics)
+$mutate  = ($env:JIRA_E2E_MUTATE  -ne "0")  # default "1" — run write phases I–K
+$sprintW = ($env:JIRA_E2E_SPRINT  -eq "1")  # default "0" — sprint writes K5–K8
+$cleanup = ($env:JIRA_E2E_CLEANUP -ne "0")  # default "1" — delete test issues in J3/J4
 
 # Generate unique tag for test resources
 $tag = [Guid]::NewGuid().ToString("N").Substring(0, 8)
@@ -695,10 +695,7 @@ if (-not $mutate) {
     }
     Invoke-Test "J2" @("issue", "unlink", $linkId) -Skip:(-not $linkId) -SkipReason "no link to unlink"
 
-    # J3: Cleanup clone (delete, or close if delete fails)
-    Cleanup-Issue "J3" $cloneKey "cleanup clone $cloneKey"
-    # J4: Cleanup original (delete, or close if delete fails)
-    Cleanup-Issue "J4" $newKey "cleanup original $newKey"
+    # J3/J4 issue cleanup runs after Phase K (K7 sprint move still needs $cloneKey)
 
     # ═══════════════════════════════════════════════════════════════════════════
     # PHASE K — Filter & Sprint Write Operations
@@ -752,6 +749,17 @@ if (-not $mutate) {
         foreach ($id in @("K5","K6","K7","K8")) {
             Skip-Row $id "sprint write" $skipReason
         }
+    }
+
+    # J3/J4: Issue cleanup (after K — K7 sprint move requires $cloneKey)
+    if ($cleanup) {
+        Cleanup-Issue "J3" $cloneKey "cleanup clone $cloneKey"
+        Cleanup-Issue "J4" $newKey "cleanup original $newKey"
+    } else {
+        Skip-Row "J3" "cleanup clone" "JIRA_E2E_CLEANUP=0"
+        Skip-Row "J4" "cleanup original" "JIRA_E2E_CLEANUP=0"
+        if ($cloneKey) { Write-Host "Keeping clone issue: $cloneKey" -ForegroundColor Yellow }
+        if ($newKey)   { Write-Host "Keeping test issue: $newKey" -ForegroundColor Yellow }
     }
 
     # Cleanup temp file

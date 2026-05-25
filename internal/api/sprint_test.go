@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -172,6 +173,70 @@ func TestSprintGetIssues_Success(t *testing.T) {
 	}
 }
 
+func TestSprintList_Pagination(t *testing.T) {
+	callCount := 0
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		startAt := r.URL.Query().Get("startAt")
+		callCount++
+		w.WriteHeader(http.StatusOK)
+		if startAt == "0" || startAt == "" {
+			_, _ = fmt.Fprint(w, `{"startAt":0,"maxResults":100,"total":3,"isLast":false,"values":[
+				{"id":1,"name":"Sprint 1","state":"active"},
+				{"id":2,"name":"Sprint 2","state":"future"}
+			]}`)
+		} else {
+			_, _ = fmt.Fprint(w, `{"startAt":2,"maxResults":100,"total":3,"isLast":true,"values":[
+				{"id":3,"name":"Sprint 3","state":"closed"}
+			]}`)
+		}
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	sprints, err := c.Sprints.List(42, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(sprints) != 3 {
+		t.Errorf("expected 3 sprints, got %d", len(sprints))
+	}
+	if callCount != 2 {
+		t.Errorf("expected 2 API calls for pagination, got %d", callCount)
+	}
+}
+
+func TestSprintGetIssues_Pagination(t *testing.T) {
+	callCount := 0
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		startAt := r.URL.Query().Get("startAt")
+		callCount++
+		w.WriteHeader(http.StatusOK)
+		if startAt == "0" || startAt == "" {
+			_, _ = fmt.Fprint(w, `{"startAt":0,"maxResults":100,"total":3,"isLast":false,"issues":[
+				{"id":"1","key":"P-1","fields":{"summary":"a","status":{"name":"Open"},"issuetype":{"name":"Task"}}},
+				{"id":"2","key":"P-2","fields":{"summary":"b","status":{"name":"Open"},"issuetype":{"name":"Task"}}}
+			]}`)
+		} else {
+			_, _ = fmt.Fprint(w, `{"startAt":2,"maxResults":100,"total":3,"isLast":true,"issues":[
+				{"id":"3","key":"P-3","fields":{"summary":"c","status":{"name":"Open"},"issuetype":{"name":"Task"}}}
+			]}`)
+		}
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	issues, err := c.Sprints.GetIssues(10)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(issues) != 3 {
+		t.Errorf("expected 3 issues, got %d", len(issues))
+	}
+	if callCount != 2 {
+		t.Errorf("expected 2 API calls for pagination, got %d", callCount)
+	}
+}
+
 // helper
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsSubstr(s, substr))
@@ -184,4 +249,145 @@ func containsSubstr(s, sub string) bool {
 		}
 	}
 	return false
+}
+
+func TestSprintGet_NotFound(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Sprints.Get(99)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestSprintGet_InvalidJSON(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{invalid`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Sprints.Get(10)
+	if err == nil {
+		t.Fatal("expected parse error")
+	}
+	if !strings.Contains(err.Error(), "parsing sprint") {
+		t.Errorf("error = %v", err)
+	}
+}
+
+func TestSprintCreate_PostError(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Sprints.Create(CreateSprintRequest{Name: "X", OriginBoardID: 1})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestSprintCreate_InvalidJSON(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+		_, _ = fmt.Fprint(w, `{invalid`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Sprints.Create(CreateSprintRequest{Name: "X", OriginBoardID: 1})
+	if err == nil {
+		t.Fatal("expected parse error")
+	}
+	if !strings.Contains(err.Error(), "parsing created sprint") {
+		t.Errorf("error = %v", err)
+	}
+}
+
+func TestSprintUpdate_Success(t *testing.T) {
+	var receivedBody map[string]any
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			t.Errorf("method = %q, want PUT", r.Method)
+		}
+		_ = json.NewDecoder(r.Body).Decode(&receivedBody)
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{"id":10,"name":"Updated Sprint","state":"active","goal":"New goal"}`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	sprint, err := c.Sprints.Update(10, UpdateSprintRequest{Name: "Updated Sprint", Goal: "New goal"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if sprint.Name != "Updated Sprint" {
+		t.Errorf("Name = %q", sprint.Name)
+	}
+	if receivedBody["goal"] != "New goal" {
+		t.Errorf("sent goal = %v", receivedBody["goal"])
+	}
+}
+
+func TestSprintUpdate_PutError(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Sprints.Update(10, UpdateSprintRequest{Name: "X"})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestSprintUpdate_InvalidJSON(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{invalid`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Sprints.Update(10, UpdateSprintRequest{Name: "X"})
+	if err == nil {
+		t.Fatal("expected parse error")
+	}
+	if !strings.Contains(err.Error(), "parsing updated sprint") {
+		t.Errorf("error = %v", err)
+	}
+}
+
+func TestSprintClose_Error(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	err := c.Sprints.Close(10)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestSprintMoveIssues_Error(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	err := c.Sprints.MoveIssues(10, []string{"PROJ-1"})
+	if err == nil {
+		t.Fatal("expected error")
+	}
 }

@@ -8,10 +8,34 @@ node_modules/
 # Windows executables
 *.exe
 
-# Go test cache
-*.test
+# Go test cache / coverage (root-level artifacts; some lack .out on Windows)
 *.out
+*.test
+*.test.exe
 coverage.txt
+/coverage
+/coverage.*
+/*_cov
+/profile
+/profile.out
+/cover_sa
+/first_cov
+/all_cov
+/cmd_cov
+/cmd_final
+/cmd_only
+/api_cov
+/api_issue_cov
+/api_client_cov
+/api_rest_cov
+/output_cov
+/config_cov
+/audit_cov
+/domain_cov
+/sprint_cov
+/walk_cov
+/cov_editraw
+/cover
 
 # goreleaser
 .goreleaser-dist/

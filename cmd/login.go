@@ -14,6 +14,11 @@ import (
 	"golang.org/x/term"
 )
 
+var (
+	loginIsTerminal   = term.IsTerminal
+	loginReadPassword = term.ReadPassword
+)
+
 var loginCmd = &cobra.Command{
 	Use:   "login",
 	Short: "Configure Jira Data Center credentials",
@@ -49,12 +54,12 @@ func runLogin(_ *cobra.Command, _ []string) error {
 		host := strings.TrimSpace(loginHostFlag)
 		if !strings.HasPrefix(host, "https://") {
 			output.Error("host must start with https://")
-			return ErrSilent
+			return SilentErr(ExitBadArgs)
 		}
 		token := strings.TrimSpace(loginTokenFlag)
 		if token == "" {
 			output.Error("token cannot be empty")
-			return ErrSilent
+			return SilentErr(ExitBadArgs)
 		}
 
 		cfg := &config.Config{Host: host, Token: token}
@@ -62,12 +67,12 @@ func runLogin(_ *cobra.Command, _ []string) error {
 		myself, err := client.Users.Me()
 		if err != nil {
 			output.Error("invalid credentials: " + err.Error())
-			return ErrSilent
+			return SilentErr(ExitAuth)
 		}
 
 		if err := config.Save(cfg); err != nil {
 			output.Error("failed to save config: " + err.Error())
-			return ErrSilent
+			return SilentErr(ExitAuth)
 		}
 
 		if jsonMode {
@@ -99,7 +104,7 @@ func runLogin(_ *cobra.Command, _ []string) error {
 	}
 	if !strings.HasPrefix(host, "https://") {
 		output.Error("host must start with https://")
-		return ErrSilent
+		return SilentErr(ExitBadArgs)
 	}
 
 	token := loginTokenFlag
@@ -107,12 +112,12 @@ func runLogin(_ *cobra.Command, _ []string) error {
 		fmt.Print("  Personal Access Token (PAT): ")
 		var tokenBytes []byte
 		var err error
-		if term.IsTerminal(int(syscall.Stdin)) {
-			tokenBytes, err = term.ReadPassword(int(syscall.Stdin))
+		if loginIsTerminal(int(syscall.Stdin)) {
+			tokenBytes, err = loginReadPassword(int(syscall.Stdin))
 			fmt.Println()
 			if err != nil {
 				output.Error("failed to read token: " + err.Error())
-				return ErrSilent
+				return SilentErr(ExitBadArgs)
 			}
 		} else {
 			line, _ := reader.ReadString('\n')
@@ -122,7 +127,7 @@ func runLogin(_ *cobra.Command, _ []string) error {
 	}
 	if token == "" {
 		output.Error("token cannot be empty")
-		return ErrSilent
+		return SilentErr(ExitBadArgs)
 	}
 
 	output.Gray("  Verifying credentials...")
@@ -131,12 +136,12 @@ func runLogin(_ *cobra.Command, _ []string) error {
 	myself, err := client.Users.Me()
 	if err != nil {
 		output.Error("invalid credentials: " + err.Error())
-		return ErrSilent
+		return SilentErr(ExitAuth)
 	}
 
 	if err := config.Save(cfg); err != nil {
 		output.Error("failed to save config: " + err.Error())
-		return ErrSilent
+		return SilentErr(ExitAuth)
 	}
 
 	fmt.Println()
@@ -151,7 +156,7 @@ func runLogin(_ *cobra.Command, _ []string) error {
 func runLogout(_ *cobra.Command, _ []string) error {
 	if err := config.Delete(); err != nil {
 		output.Error("failed to remove config: " + err.Error())
-		return ErrSilent
+		return SilentErr(ExitAuth)
 	}
 	output.Success("Logged out. Config removed.")
 	return nil

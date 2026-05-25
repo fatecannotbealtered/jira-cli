@@ -84,7 +84,7 @@ var boardGetCmd = &cobra.Command{
 		boardID, _ := cmd.Flags().GetInt("board")
 		if boardID == 0 {
 			output.Error("--board is required")
-			return ErrSilent
+			return SilentErr(ExitBadArgs)
 		}
 		board, err := client.Boards.Get(boardID)
 		if err != nil {
@@ -113,7 +113,7 @@ var boardBacklogCmd = &cobra.Command{
 		boardID, _ := cmd.Flags().GetInt("board")
 		if boardID == 0 {
 			output.Error("--board is required")
-			return ErrSilent
+			return SilentErr(ExitBadArgs)
 		}
 		issues, err := client.Boards.GetBacklog(boardID)
 		if err != nil {
@@ -147,7 +147,7 @@ var boardEpicsCmd = &cobra.Command{
 		boardID, _ := cmd.Flags().GetInt("board")
 		if boardID == 0 {
 			output.Error("--board is required")
-			return ErrSilent
+			return SilentErr(ExitBadArgs)
 		}
 		done, _ := cmd.Flags().GetBool("done")
 		epics, err := client.Boards.GetEpics(boardID, done)
@@ -182,7 +182,7 @@ var boardSprintsCmd = &cobra.Command{
 		boardID, _ := cmd.Flags().GetInt("board")
 		if boardID == 0 {
 			output.Error("--board is required")
-			return ErrSilent
+			return SilentErr(ExitBadArgs)
 		}
 		state, _ := cmd.Flags().GetString("state")
 		sprints, err := client.Boards.GetSprints(boardID, state)

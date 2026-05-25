@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -63,6 +64,47 @@ func TestSaveCreatesDir(t *testing.T) {
 	}
 	if !info.IsDir() {
 		t.Error("expected a directory")
+	}
+}
+
+func writeConfigFile(t *testing.T, content string) {
+	t.Helper()
+	dir := Dir()
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatalf("MkdirAll() error: %v", err)
+	}
+	if err := os.WriteFile(FilePath(), []byte(content), 0600); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+}
+
+func TestLoadInvalidJSON(t *testing.T) {
+	_, restore := overrideHome(t)
+	defer restore()
+
+	writeConfigFile(t, `{not valid json`)
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() should return error for invalid JSON")
+	}
+	if !strings.Contains(err.Error(), "parsing config") {
+		t.Errorf("error = %q, want parsing config message", err.Error())
+	}
+}
+
+func TestMustLoadInvalidJSON(t *testing.T) {
+	_, restore := overrideHome(t)
+	defer restore()
+
+	writeConfigFile(t, `{not valid json`)
+
+	_, err := MustLoad()
+	if err == nil {
+		t.Fatal("MustLoad() should return error for invalid JSON")
+	}
+	if !strings.Contains(err.Error(), "parsing config") {
+		t.Errorf("error = %q, want parsing config message", err.Error())
 	}
 }
 

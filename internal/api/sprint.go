@@ -8,19 +8,12 @@ import (
 
 // List lists all sprints for a given board, with optional state filter (active/future/closed).
 func (a *SprintAPI) List(boardID int, state string) ([]Sprint, error) {
-	path := fmt.Sprintf("/rest/agile/1.0/board/%d/sprint", boardID)
+	basePath := fmt.Sprintf("/rest/agile/1.0/board/%d/sprint", boardID)
+	params := url.Values{}
 	if state != "" {
-		path += "?state=" + url.QueryEscape(state)
+		params.Set("state", state)
 	}
-	data, err := a.client.Get(path)
-	if err != nil {
-		return nil, err
-	}
-	var page SprintPage
-	if err := json.Unmarshal(data, &page); err != nil {
-		return nil, fmt.Errorf("parsing sprints: %w", err)
-	}
-	return page.Values, nil
+	return a.client.fetchAllSprintPages(basePath, params)
 }
 
 // Get retrieves a single sprint by ID.
@@ -39,18 +32,8 @@ func (a *SprintAPI) Get(sprintID int) (*Sprint, error) {
 
 // GetIssues retrieves all issues in a given sprint.
 func (a *SprintAPI) GetIssues(sprintID int) ([]Issue, error) {
-	path := fmt.Sprintf("/rest/agile/1.0/sprint/%d/issue", sprintID)
-	data, err := a.client.Get(path)
-	if err != nil {
-		return nil, err
-	}
-	var result struct {
-		Issues []Issue `json:"issues"`
-	}
-	if err := json.Unmarshal(data, &result); err != nil {
-		return nil, fmt.Errorf("parsing sprint issues: %w", err)
-	}
-	return result.Issues, nil
+	basePath := fmt.Sprintf("/rest/agile/1.0/sprint/%d/issue", sprintID)
+	return a.client.fetchAllIssuePages(basePath, nil)
 }
 
 // Create creates a new sprint on the given board.

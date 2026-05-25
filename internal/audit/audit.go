@@ -12,6 +12,11 @@ import (
 	"github.com/fatecannotbealtered/jira-cli/internal/config"
 )
 
+var (
+	auditJSONMarshal = json.Marshal
+	auditReadDir     = os.ReadDir
+)
+
 // entry is a single audit log record written as one JSON line.
 type entry struct {
 	Ts   string   `json:"ts"`
@@ -55,7 +60,7 @@ func Log(cmdPath string, args []string, exitCode int, durationMs int64) {
 		Ms:   durationMs,
 	}
 
-	data, err := json.Marshal(e)
+	data, err := auditJSONMarshal(e)
 	if err != nil {
 		return
 	}
@@ -96,7 +101,7 @@ func cleanup(dir string) {
 
 	cutoff := time.Now().AddDate(0, -months, 0).Format("2006-01")
 
-	entries, err := os.ReadDir(dir)
+	entries, err := auditReadDir(dir)
 	if err != nil {
 		return
 	}
@@ -159,7 +164,7 @@ func sanitizeArgs(args []string) []string {
 // Exported for testing.
 func Files() ([]string, error) {
 	dir := Dir()
-	entries, err := os.ReadDir(dir)
+	entries, err := auditReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil

@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"strings"
@@ -36,6 +37,27 @@ func captureStdout(t *testing.T, fn func()) string {
 	<-done
 	_ = r.Close()
 	return buf.String()
+}
+
+// ─── jqlHasOrderBy ──────────────────────────────────────────────────────────
+
+func TestJqlHasOrderBy(t *testing.T) {
+	cases := []struct {
+		jql  string
+		want bool
+	}{
+		{"project = PROJ ORDER BY updated", true},
+		{"project = PROJ order by updated", true},
+		{"ORDER BY created DESC", true},
+		{"project = PROJ", false},
+		{"project = PROJ AND summary ~ 'reorder items'", false},
+	}
+	for _, tc := range cases {
+		got := jqlHasOrderBy(tc.jql)
+		if got != tc.want {
+			t.Errorf("jqlHasOrderBy(%q) = %v, want %v", tc.jql, got, tc.want)
+		}
+	}
 }
 
 // ─── exitCodeForStatus ──────────────────────────────────────────────────────
@@ -104,6 +126,44 @@ func TestSetExitCode_Monotonic(t *testing.T) {
 		t.Fatalf("expected %d, got %d", ExitNetwork, LastExitCode())
 	}
 	lastExit = 0 // cleanup
+}
+
+func TestSilentErr_SetsExitCode(t *testing.T) {
+	lastExit = 0
+	err := SilentErr(ExitAuth)
+	if !errors.Is(err, ErrSilent) {
+		t.Fatalf("expected ErrSilent, got %v", err)
+	}
+	if LastExitCode() != ExitAuth {
+		t.Errorf("LastExitCode() = %d, want %d", LastExitCode(), ExitAuth)
+	}
+	lastExit = 0
+}
+
+func TestDoctor_NotConfigured_ExitCode(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+	t.Setenv("USERPROFILE", tmpDir)
+	t.Setenv("JIRA_HOST", "")
+	t.Setenv("JIRA_TOKEN", "")
+
+	lastExit = 0
+	buf := new(bytes.Buffer)
+	rootCmd.SetOut(buf)
+	rootCmd.SetErr(buf)
+	rootCmd.SetArgs([]string{"doctor"})
+	err := Execute()
+	rootCmd.SetOut(os.Stdout)
+	rootCmd.SetErr(os.Stderr)
+	rootCmd.SetArgs(nil)
+
+	if !errors.Is(err, ErrSilent) {
+		t.Fatalf("expected ErrSilent, got %v", err)
+	}
+	if LastExitCode() != ExitAuth {
+		t.Errorf("LastExitCode() = %d, want %d", LastExitCode(), ExitAuth)
+	}
+	lastExit = 0
 }
 
 // ─── Root command help ──────────────────────────────────────────────────────
