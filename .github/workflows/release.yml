@@ -70,19 +70,21 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: "1.23"
+          go-version: "1.24"
 
       - name: Extract release notes
         run: |
           VERSION="${GITHUB_REF#refs/tags/v}"
-          sed -n "/^## \[${VERSION}\]/,/^## \[/p" CHANGELOG.md | sed '$ { /^## \[/d }' > release-notes.md
-          [ -s release-notes.md ] || cp CHANGELOG.md release-notes.md
+          NOTES="${RUNNER_TEMP}/release-notes.md"
+          sed -n "/^## \[${VERSION}\]/,/^## \[/p" CHANGELOG.md | sed '$ { /^## \[/d }' > "$NOTES"
+          [ -s "$NOTES" ] || cp CHANGELOG.md "$NOTES"
+          echo "NOTES_FILE=$NOTES" >> "$GITHUB_ENV"
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v7
         with:
           version: "~> v2"
-          args: release --clean --release-notes=release-notes.md
+          args: release --clean --release-notes=${{ env.NOTES_FILE }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
