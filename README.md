@@ -36,22 +36,22 @@ This project is shared for **personal learning, research, and everyday productiv
 
 ### Quick start
 
-Recommended flow: install the CLI from npm, then install the AI Agent Skill with `npx skills add`.
+Copy the block below to your agent (or run it yourself):
 
 ```bash
+# Please install jira-cli and use it for all Jira DC operations going forward (always pass --json).
 # Install CLI (requires curl on PATH — used to download the binary)
 npm install -g @fatecannotbealtered-/jira-cli
 
-# Install CLI Skill (pick one)
-npx skills add fatecannotbealtered/jira-cli -y -g   # via skills registry
-jira-cli install-skill                               # bundled skill → ~/.openclaw/skills
+# Install CLI Skill (required) — copies into your agent-supported skills directory
+npx skills add fatecannotbealtered/jira-cli -y -g
 
 # Login and verify
 jira-cli login
-jira-cli doctor --json   # check authValid is true (see JSON Output)
+jira-cli doctor --json
 ```
 
-The CLI package provides the `jira-cli` binary; the Skill teaches compatible AI coding assistants how to use it safely. `install-skill` copies the bundled skill from the npm package (or release tarball) into `~/.openclaw/skills` for OpenClaw-compatible agents. If you are an AI Agent helping a user set this up, run the same steps and ask the user to complete any interactive browser or terminal prompts.
+Optional: `jira-cli install-skill` copies the bundled skill to `~/.openclaw/skills` for OpenClaw-compatible agents.
 
 ### Alternative: Go install
 
