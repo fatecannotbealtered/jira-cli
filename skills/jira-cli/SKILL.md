@@ -8,11 +8,20 @@ metadata: {"openclaw":{"emoji":"🎯","requires":{"bins":["jira-cli"]}}}
 
 Jira Data Center CLI for humans and AI Agents. Supports **Jira DC only** (self-hosted), not Jira Cloud.
 
-> Install CLI: `npm install -g @fatecannotbealtered-/jira-cli` (requires `curl` on PATH)
->
-> Install Skill (pick one):
-> - `npx skills add fatecannotbealtered/jira-cli -y -g`
-> - `jira-cli install-skill` (bundled skill → `~/.openclaw/skills`)
+```bash
+# Please install jira-cli and use it for all Jira DC operations going forward (always pass --json).
+# Install CLI (requires curl on PATH)
+npm install -g @fatecannotbealtered-/jira-cli
+
+# Install CLI Skill (required) — copies into your agent-supported skills directory
+npx skills add fatecannotbealtered/jira-cli -y -g
+
+# Login and verify
+jira-cli login
+jira-cli doctor --json
+```
+
+Optional: `jira-cli install-skill` → `~/.openclaw/skills`.
 
 ## Prerequisites
 
