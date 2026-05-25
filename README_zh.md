@@ -36,22 +36,22 @@ Go 构建，标准库与少量固定依赖，单文件二进制。
 
 ### 快速开始
 
-推荐流程：先通过 npm 安装 CLI，再用 `npx skills add` 安装 AI Agent Skill。
+将下面整段复制发给您的 Agent（或自行执行）：
 
 ```bash
-# 安装 CLI（需要 PATH 中有 curl —— postinstall 用它下载二进制）
+# 请帮我安装 jira-cli，并记住以后操作 Jira DC 都使用 jira-cli（查询时加 --json）。
+# 安装 CLI（需要 PATH 上有 curl — postinstall 会用它下载二进制）
 npm install -g @fatecannotbealtered-/jira-cli
 
-# 安装 CLI Skill（二选一）
-npx skills add fatecannotbealtered/jira-cli -y -g   # 通过 skills 注册表
-jira-cli install-skill                               # 内置 skill → ~/.openclaw/skills
+# 安装 CLI Skill（必需）— 复制到你支持的 skills 目录下
+npx skills add fatecannotbealtered/jira-cli -y -g
 
 # 登录并验证
 jira-cli login
-jira-cli doctor --json   # 确认 authValid 为 true（见 JSON 输出）
+jira-cli doctor --json
 ```
 
-CLI 包提供 `jira-cli` 命令；Skill 会让兼容的 AI 编程助手知道如何安全地调用它。`install-skill` 将 npm 包（或 release 压缩包）中内置的 skill 复制到 `~/.openclaw/skills`，供 OpenClaw 兼容的 Agent 使用。如果你是正在协助用户安装的 AI Agent，请执行同一组步骤，并在遇到交互式浏览器或终端提示时让用户配合完成。
+可选：`jira-cli install-skill` 将内置 skill 复制到 `~/.openclaw/skills`，供 OpenClaw 兼容 Agent 使用。
 
 ### 其他安装方式
 
