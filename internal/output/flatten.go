@@ -4,18 +4,19 @@ import "strings"
 
 // FlatIssue is a flattened representation of a Jira issue for token-efficient output.
 type FlatIssue struct {
-	Key       string `json:"key"`
-	Summary   string `json:"summary"`
-	Status    string `json:"status"`
-	Type      string `json:"type"`
-	Assignee  string `json:"assignee,omitempty"`
-	Reporter  string `json:"reporter,omitempty"`
-	Priority  string `json:"priority,omitempty"`
-	Created   string `json:"created,omitempty"`
-	Updated   string `json:"updated,omitempty"`
-	Labels    string `json:"labels,omitempty"`
-	Component string `json:"component,omitempty"`
-	Parent    string `json:"parent,omitempty"`
+	Key         string `json:"key"`
+	Summary     string `json:"summary"`
+	Description string `json:"description,omitempty"`
+	Status      string `json:"status"`
+	Type        string `json:"type"`
+	Assignee    string `json:"assignee,omitempty"`
+	Reporter    string `json:"reporter,omitempty"`
+	Priority    string `json:"priority,omitempty"`
+	Created     string `json:"created,omitempty"`
+	Updated     string `json:"updated,omitempty"`
+	Labels      string `json:"labels,omitempty"`
+	Component   string `json:"component,omitempty"`
+	Parent      string `json:"parent,omitempty"`
 }
 
 // FlatSprint is a flattened representation of a Jira sprint.
@@ -61,6 +62,9 @@ func IssueToMap(issue FlatIssue) map[string]any {
 		"summary": issue.Summary,
 		"status":  issue.Status,
 		"type":    issue.Type,
+	}
+	if issue.Description != "" {
+		m["description"] = issue.Description
 	}
 	if issue.Assignee != "" {
 		m["assignee"] = issue.Assignee

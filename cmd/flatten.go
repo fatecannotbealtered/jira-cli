@@ -7,6 +7,19 @@ import (
 	"github.com/fatecannotbealtered/jira-cli/internal/output"
 )
 
+// descriptionText renders a description field: DC returns a plain string,
+// Cloud/v3 returns an ADF object. Returns "" for nil/other.
+func descriptionText(desc any) string {
+	switch v := desc.(type) {
+	case nil:
+		return ""
+	case string:
+		return v
+	default:
+		return api.ADFToText(v)
+	}
+}
+
 // toFlatIssue converts an API Issue to a token-efficient FlatIssue.
 func toFlatIssue(issue *api.Issue) output.FlatIssue {
 	f := issue.Fields
@@ -55,6 +68,7 @@ func printIssueJSON(issue *api.Issue, raw bool, fields []string) {
 		return
 	}
 	fi := toFlatIssue(issue)
+	fi.Description = descriptionText(issue.Fields.Description)
 	if len(fields) > 0 {
 		output.PrintJSON(output.FilterFields(fi, fields))
 		return

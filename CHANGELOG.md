@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.4] - 2026-05-31
+
+### Fixed
+
+- **`issue get` description** — `description` is now included in the default flat output and selectable via `--fields description` (previously only reachable through `--raw`). Bulk outputs (`issue list`, `search`, `filter run`, `sprint issues`) stay lean and omit `description` by default to preserve token efficiency. Handles both Data Center (plain string) and Cloud/v3 (ADF) descriptions.
+
 ## [1.0.3] - 2026-05-26
 
 ### Fixed

@@ -149,3 +149,65 @@ func TestPrintIssuesJSON_Fields(t *testing.T) {
 		t.Error("summary should be filtered out")
 	}
 }
+
+func TestDescriptionText(t *testing.T) {
+	adf := map[string]any{
+		"type": "doc",
+		"content": []any{
+			map[string]any{
+				"type":    "paragraph",
+				"content": []any{map[string]any{"type": "text", "text": "ADF body"}},
+			},
+		},
+	}
+	cases := []struct {
+		name string
+		desc any
+		want string
+	}{
+		{"string", "plain DC text", "plain DC text"},
+		{"adf", adf, "ADF body"},
+		{"nil", nil, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := descriptionText(tc.desc); got != tc.want {
+				t.Errorf("descriptionText = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestPrintIssueJSON_Description verifies single-get exposes description in
+// both default flat output and --fields, while bulk output stays lean.
+func TestPrintIssueJSON_Description(t *testing.T) {
+	issue := &api.Issue{Key: "DESC-1", Fields: api.IssueFields{Summary: "s", Description: "branch: feat-x"}}
+
+	out := captureStdout(t, func() { printIssueJSON(issue, false, nil) })
+	var m map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &m); err != nil {
+		t.Fatalf("not valid JSON: %v", err)
+	}
+	if m["description"] != "branch: feat-x" {
+		t.Errorf("get default description = %v, want branch: feat-x", m["description"])
+	}
+
+	out = captureStdout(t, func() { printIssueJSON(issue, false, []string{"key", "description"}) })
+	m = nil
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &m); err != nil {
+		t.Fatalf("not valid JSON: %v", err)
+	}
+	if m["description"] != "branch: feat-x" {
+		t.Errorf("get --fields description = %v, want branch: feat-x", m["description"])
+	}
+
+	// Bulk list stays lean: no description in default flat output.
+	out = captureStdout(t, func() { printIssuesJSON([]api.Issue{*issue}, false, nil) })
+	var arr []map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &arr); err != nil {
+		t.Fatalf("not valid JSON: %v", err)
+	}
+	if _, ok := arr[0]["description"]; ok {
+		t.Error("bulk flat output should not include description (token efficiency)")
+	}
+}

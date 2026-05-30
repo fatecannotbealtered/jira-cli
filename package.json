@@ -1,6 +1,6 @@
 {
   "name": "@fatecannotbealtered-/jira-cli",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Full-featured Jira Data Center CLI for humans and AI Agents — manage issues, sprints, boards, epics, projects, users, and filters from your terminal",
   "keywords": [
     "jira",
