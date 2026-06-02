@@ -1460,6 +1460,54 @@ func TestIssueListAttachments_Error(t *testing.T) {
 	}
 }
 
+func TestIssueDownloadAttachment_Success(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("bytes"))
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	dir := t.TempDir()
+	att := Attachment{ID: "20001", Filename: "a.png", Content: ts.URL + "/secure/attachment/20001/a.png"}
+	path, err := c.Issues.DownloadAttachment(context.Background(), att, dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if path != filepath.Join(dir, "a.png") {
+		t.Errorf("path = %q", path)
+	}
+	if b, _ := os.ReadFile(path); string(b) != "bytes" {
+		t.Errorf("content = %q", b)
+	}
+}
+
+func TestIssueDownloadAttachment_NoContentURL(t *testing.T) {
+	c := newTestClient("https://jira.example.com")
+	_, err := c.Issues.DownloadAttachment(context.Background(), Attachment{ID: "1", Filename: "a.png"}, t.TempDir())
+	if err == nil || !strings.Contains(err.Error(), "no content URL") {
+		t.Fatalf("expected no content URL error, got %v", err)
+	}
+}
+
+func TestIssueDownloadAttachment_PathTraversalSanitised(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("x"))
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	dir := t.TempDir()
+	att := Attachment{ID: "1", Filename: "../../evil.txt", Content: ts.URL + "/x"}
+	path, err := c.Issues.DownloadAttachment(context.Background(), att, dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if path != filepath.Join(dir, "evil.txt") {
+		t.Errorf("filename not sanitised: %q", path)
+	}
+}
+
 // ─── Issue.Search (full coverage) ─────────────────────────────────────────────
 
 func TestIssueSearch_WithFieldsAndDefaultMax(t *testing.T) {

@@ -371,6 +371,52 @@ func (c *Client) Upload(ctx context.Context, path, filePath string) ([]byte, err
 	}
 }
 
+// Download streams a resource to dst. rawURL may be an absolute URL or a host
+// path ("/..."); to prevent SSRF, an absolute URL must point at the configured
+// Jira host. Uses Bearer auth like every other request.
+func (c *Client) Download(ctx context.Context, rawURL, dst string) error {
+	target := rawURL
+	switch {
+	case strings.HasPrefix(rawURL, "/"):
+		target = c.host + rawURL
+	case strings.HasPrefix(rawURL, c.host+"/"), rawURL == c.host:
+		// same host, allowed as-is
+	default:
+		return fmt.Errorf("refusing to download from URL outside %s", c.host)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
+	if err != nil {
+		return fmt.Errorf("creating download request: %w", err)
+	}
+	req.Header.Set("Authorization", c.authHeader)
+	req.Header.Set("User-Agent", defaultUserAgent())
+
+	// Large attachments (e.g. screen recordings) can exceed the shared 30s
+	// client timeout; download with no overall deadline and rely on ctx.
+	dl := &http.Client{CheckRedirect: c.httpClient.CheckRedirect}
+	resp, err := dl.Do(req)
+	if err != nil {
+		return fmt.Errorf("executing download request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode >= 400 {
+		data, _ := io.ReadAll(resp.Body)
+		return c.parseError(resp.StatusCode, data)
+	}
+
+	f, err := os.Create(dst)
+	if err != nil {
+		return fmt.Errorf("creating file %s: %w", dst, err)
+	}
+	defer func() { _ = f.Close() }()
+	if _, err := io.Copy(f, resp.Body); err != nil {
+		return fmt.Errorf("writing file %s: %w", dst, err)
+	}
+	return nil
+}
+
 // ===== API group types (methods implemented in their own files) =====
 
 // IssueAPI wraps Issue-related API calls.

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.5] - 2026-06-02
+
+### Added
+
+- **`issue attachments` download** — the command can now fetch attachment content, not just list metadata. `--out <dir>` downloads all attachments into a directory; add `--id <attachmentId>` to download a single one (exit code 4 if not found). With `--json` it prints `{id, filename, path, mimeType}` per saved file. Downloads stream to disk (handles large files like screen recordings) and validate the content URL points at the configured Jira host. The `attachments --json` listing now also includes the `content` download URL.
+
 ## [1.0.4] - 2026-05-31
 
 ### Fixed
@@ -113,7 +119,8 @@ Initial release of jira-cli for Jira Data Center.
 - SKILL.md with JSON output schemas, error codes, exit codes, and complete flag reference.
 - GitHub PR template for contributors.
 
-[Unreleased]: https://github.com/fatecannotbealtered/jira-cli/compare/v1.0.4...HEAD
+[Unreleased]: https://github.com/fatecannotbealtered/jira-cli/compare/v1.0.5...HEAD
+[1.0.5]: https://github.com/fatecannotbealtered/jira-cli/compare/v1.0.4...v1.0.5
 [1.0.4]: https://github.com/fatecannotbealtered/jira-cli/compare/v1.0.3...v1.0.4
 [1.0.3]: https://github.com/fatecannotbealtered/jira-cli/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/fatecannotbealtered/jira-cli/compare/v1.0.1...v1.0.2

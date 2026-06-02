@@ -148,6 +148,9 @@ jira-cli issue worklog list PROJ-123
 # Links & Attachments
 jira-cli issue link PROJ-123 --to PROJ-456 --type "blocks"
 jira-cli issue attach PROJ-123 --file ./screenshot.png
+jira-cli issue attachments PROJ-123                       # List attachments
+jira-cli issue attachments PROJ-123 --out ./downloads     # Download all attachments
+jira-cli issue attachments PROJ-123 --out ./downloads --id 4609477   # Download one by ID
 jira-cli issue remote-link PROJ-123 --url https://pr.url --title "PR #42"
 ```
 
@@ -295,6 +298,8 @@ Credentials stored at `~/.jira-cli/config.json` (permissions: 0600):
 | `--raw` | `issue get`, `issue list`, `search`, `filter run`, `sprint list`, `sprint issues`, `sprint active` | Return raw Jira API response instead of flat format |
 | `--fields` | `issue get`, `issue list`, `sprint list`, `sprint issues`, `filter run` | **Output trimming** — include only listed fields in flat JSON (e.g. `--fields key,summary,status`) |
 | `--fields` | `search` only | **Jira fetch fields** — comma-separated fields to request from the API (e.g. `--fields summary,status,customfield_10001`); does not trim flat output |
+| `--out` | `issue attachments` | Download attachments into this directory instead of listing (default cwd via the dir you pass); with `--json` prints `{id, filename, path, mimeType}` |
+| `--id` | `issue attachments` | With `--out`, download only the attachment with this ID (exit code 4 if not found) |
 
 ## Troubleshooting
 

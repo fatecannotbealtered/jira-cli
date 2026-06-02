@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -405,6 +406,24 @@ func (a *IssueAPI) ListAttachments(key string) ([]Attachment, error) {
 		return nil, err
 	}
 	return issue.Fields.Attachments, nil
+}
+
+// DownloadAttachment downloads one attachment's content into dstDir and returns
+// the saved file path. The server-provided filename is sanitised to its base
+// name to prevent path traversal.
+func (a *IssueAPI) DownloadAttachment(ctx context.Context, att Attachment, dstDir string) (string, error) {
+	if att.Content == "" {
+		return "", fmt.Errorf("attachment %s (%s) has no content URL", att.ID, att.Filename)
+	}
+	name := filepath.Base(att.Filename)
+	if name == "" || name == "." || name == string(filepath.Separator) {
+		name = att.ID
+	}
+	dst := filepath.Join(dstDir, name)
+	if err := a.client.Download(ctx, att.Content, dst); err != nil {
+		return "", err
+	}
+	return dst, nil
 }
 
 // Search executes a JQL search (single page).

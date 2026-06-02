@@ -109,7 +109,9 @@ jira-cli issue remote-links PROJ-123 --json
 
 # Attachments
 jira-cli issue attach PROJ-123 --file ./screenshot.png
-jira-cli issue attachments PROJ-123 --json
+jira-cli issue attachments PROJ-123 --json                       # list metadata (incl. content URL)
+jira-cli issue attachments PROJ-123 --out ./dl --json            # download all -> [{id,filename,path,mimeType}]
+jira-cli issue attachments PROJ-123 --out ./dl --id 4609477      # download a single attachment by ID
 ```
 
 ## Search (JQL)

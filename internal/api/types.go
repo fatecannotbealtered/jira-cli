@@ -110,6 +110,7 @@ type Attachment struct {
 	MimeType string `json:"mimeType"`
 	Author   User   `json:"author"`
 	Created  string `json:"created"`
+	Content  string `json:"content"` // URL to download the raw bytes
 }
 
 type Comment struct {

@@ -1107,3 +1107,68 @@ func TestUpload_InvalidHost(t *testing.T) {
 		t.Fatalf("expected request creation error, got %v", err)
 	}
 }
+
+
+func TestDownload_Success(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer test-pat-token" {
+			t.Errorf("Authorization = %q", r.Header.Get("Authorization"))
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("file-bytes"))
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	dst := filepath.Join(t.TempDir(), "out.bin")
+
+	// path form
+	if err := c.Download(context.Background(), "/secure/attachment/1/a.png", dst); err != nil {
+		t.Fatalf("Download path form: %v", err)
+	}
+	got, _ := os.ReadFile(dst)
+	if string(got) != "file-bytes" {
+		t.Errorf("content = %q", got)
+	}
+
+	// absolute same-host URL form
+	if err := c.Download(context.Background(), ts.URL+"/secure/attachment/1/a.png", dst); err != nil {
+		t.Fatalf("Download absolute form: %v", err)
+	}
+}
+
+func TestDownload_SSRFGuard(t *testing.T) {
+	c := newTestClient("https://jira.example.com")
+	err := c.Download(context.Background(), "https://evil.example.com/x", filepath.Join(t.TempDir(), "x"))
+	if err == nil || !strings.Contains(err.Error(), "refusing to download") {
+		t.Fatalf("expected SSRF guard error, got %v", err)
+	}
+}
+
+func TestDownload_HTTPError(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = fmt.Fprint(w, `{"errorMessages":["gone"]}`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	err := c.Download(context.Background(), "/x", filepath.Join(t.TempDir(), "x"))
+	if apiErr, ok := err.(*APIError); !ok || apiErr.StatusCode != 404 {
+		t.Fatalf("expected 404 APIError, got %v", err)
+	}
+}
+
+func TestDownload_CreateFileError(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("data"))
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	// dst dir does not exist -> os.Create fails
+	err := c.Download(context.Background(), "/x", filepath.Join(t.TempDir(), "missing-dir", "x"))
+	if err == nil || !strings.Contains(err.Error(), "creating file") {
+		t.Fatalf("expected create file error, got %v", err)
+	}
+}
