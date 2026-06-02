@@ -1108,7 +1108,6 @@ func TestUpload_InvalidHost(t *testing.T) {
 	}
 }
 
-
 func TestDownload_Success(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer test-pat-token" {
