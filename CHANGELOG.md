@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.6] - 2026-06-05
+
+### Added
+
+- **Built-in `update` command** — standalone binaries can check GitHub Releases, verify `checksums.txt`, and replace the current executable. Package-manager installs are detected and guided back to the package manager unless `--force` is used.
+- **Global output format control** — `--format json|text|raw` now controls CLI output across commands. JSON is the default for agent-friendly parsing, `text` keeps human-readable tables and prompts, and `raw` is explicitly supported only by commands that can return raw output.
+
+### Changed
+
+- **Agent-friendly defaults** — commands now emit stable JSON by default, while `--json` remains a compatibility alias for `--format json`.
+- **Reference output** — `jira-cli reference` now defaults to structured JSON; use `jira-cli --format text reference` for the Markdown command reference.
+- **Output flag rules** — `--compact` and `--fields` are JSON-only, `--quiet` no longer suppresses JSON/raw result bodies, and unsupported `raw` output returns an argument error instead of silently downgrading.
+
+### Fixed
+
+- **Structured argument errors** — Cobra argument validation errors now return machine-readable JSON by default instead of plain text.
+- **Clean JSON stdout** — interactive prompts and cancellation/error paths no longer pollute JSON success output.
+
 ## [1.0.5] - 2026-06-02
 
 ### Added
@@ -119,7 +137,8 @@ Initial release of jira-cli for Jira Data Center.
 - SKILL.md with JSON output schemas, error codes, exit codes, and complete flag reference.
 - GitHub PR template for contributors.
 
-[Unreleased]: https://github.com/fatecannotbealtered/jira-cli/compare/v1.0.5...HEAD
+[Unreleased]: https://github.com/fatecannotbealtered/jira-cli/compare/v1.0.6...HEAD
+[1.0.6]: https://github.com/fatecannotbealtered/jira-cli/compare/v1.0.5...v1.0.6
 [1.0.5]: https://github.com/fatecannotbealtered/jira-cli/compare/v1.0.4...v1.0.5
 [1.0.4]: https://github.com/fatecannotbealtered/jira-cli/compare/v1.0.3...v1.0.4
 [1.0.3]: https://github.com/fatecannotbealtered/jira-cli/compare/v1.0.2...v1.0.3
