@@ -94,10 +94,12 @@ func runInstallSkill(cmd *cobra.Command, args []string) error {
 		}
 
 		installedFiles = append(installedFiles, rel)
-		if updated {
-			output.Info(fmt.Sprintf("Updated: %s", rel))
-		} else {
-			output.Success(fmt.Sprintf("Installed: %s", rel))
+		if !jsonMode {
+			if updated {
+				output.Info(fmt.Sprintf("Updated: %s", rel))
+			} else {
+				output.Success(fmt.Sprintf("Installed: %s", rel))
+			}
 		}
 		return nil
 	})

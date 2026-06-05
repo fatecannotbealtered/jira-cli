@@ -58,6 +58,10 @@ var issueLinkCmd = &cobra.Command{
 		if err := client.Issues.CreateLink(req); err != nil {
 			return handleAPIError(err, jsonMode)
 		}
+		if jsonMode {
+			output.PrintJSON(map[string]string{"from": args[0], "to": to, "type": linkType, "status": "linked"})
+			return nil
+		}
 		output.Success(fmt.Sprintf("Linked %s → %s (%s)", args[0], to, linkType))
 		return nil
 	},
@@ -77,6 +81,10 @@ var issueUnlinkCmd = &cobra.Command{
 		}
 		if err := client.Issues.DeleteLink(args[0]); err != nil {
 			return handleAPIError(err, jsonMode)
+		}
+		if jsonMode {
+			output.PrintJSON(map[string]string{"linkId": args[0], "status": "removed"})
+			return nil
 		}
 		output.Success(fmt.Sprintf("Link %s removed", args[0]))
 		return nil

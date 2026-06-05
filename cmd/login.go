@@ -91,14 +91,16 @@ func runLogin(_ *cobra.Command, _ []string) error {
 	// Interactive mode
 	reader := bufio.NewReader(os.Stdin)
 
-	fmt.Println()
-	output.Bold("  jira-cli Login (Data Center)")
-	output.Gray("  ────────────────────────────────────────")
-	fmt.Println()
+	if !jsonMode {
+		fmt.Println()
+		output.Bold("  jira-cli Login (Data Center)")
+		output.Gray("  ────────────────────────────────────────")
+		fmt.Println()
+	}
 
 	host := loginHostFlag
 	if host == "" {
-		fmt.Print("  Jira host (e.g. https://jira.company.com): ")
+		loginPrompt("  Jira host (e.g. https://jira.company.com): ")
 		host, _ = reader.ReadString('\n')
 		host = strings.TrimSpace(host)
 	}
@@ -109,12 +111,12 @@ func runLogin(_ *cobra.Command, _ []string) error {
 
 	token := loginTokenFlag
 	if token == "" {
-		fmt.Print("  Personal Access Token (PAT): ")
+		loginPrompt("  Personal Access Token (PAT): ")
 		var tokenBytes []byte
 		var err error
 		if loginIsTerminal(int(syscall.Stdin)) {
 			tokenBytes, err = loginReadPassword(int(syscall.Stdin))
-			fmt.Println()
+			loginPrompt("\n")
 			if err != nil {
 				output.Error("failed to read token: " + err.Error())
 				return SilentErr(ExitBadArgs)
@@ -144,6 +146,15 @@ func runLogin(_ *cobra.Command, _ []string) error {
 		return SilentErr(ExitAuth)
 	}
 
+	if jsonMode {
+		output.PrintJSON(map[string]string{
+			"status":      "ok",
+			"displayName": myself.DisplayName,
+			"username":    myself.Name,
+		})
+		return nil
+	}
+
 	fmt.Println()
 	output.Success(fmt.Sprintf("Logged in as %s (%s)", myself.DisplayName, myself.Name))
 	output.Info("Config saved to " + config.FilePath())
@@ -153,10 +164,22 @@ func runLogin(_ *cobra.Command, _ []string) error {
 	return nil
 }
 
+func loginPrompt(msg string) {
+	if jsonMode {
+		fmt.Fprint(os.Stderr, msg)
+		return
+	}
+	fmt.Print(msg)
+}
+
 func runLogout(_ *cobra.Command, _ []string) error {
 	if err := config.Delete(); err != nil {
 		output.Error("failed to remove config: " + err.Error())
 		return SilentErr(ExitAuth)
+	}
+	if jsonMode {
+		output.PrintJSON(map[string]string{"status": "loggedOut"})
+		return nil
 	}
 	output.Success("Logged out. Config removed.")
 	return nil

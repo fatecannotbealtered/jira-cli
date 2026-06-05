@@ -23,6 +23,7 @@ func init() {
 	issueGetCmd.Flags().Bool("raw", false, "Return raw Jira API response (default: flat JSON)")
 	issueGetCmd.Flags().StringSlice("fields", nil, "Output only these fields (flat JSON only, e.g. key,summary,status,assignee)")
 	issueCmd.AddCommand(issueGetCmd)
+	markRawFormat(issueGetCmd)
 
 	// issue list
 	issueListCmd.Flags().String("project", "", "Project key (required)")
@@ -36,6 +37,7 @@ func init() {
 	issueListCmd.Flags().Bool("raw", false, "Return raw Jira API response (default: flat JSON)")
 	issueListCmd.Flags().StringSlice("fields", nil, "Output only these fields (flat JSON only, e.g. key,summary,status,assignee)")
 	issueCmd.AddCommand(issueListCmd)
+	markRawFormat(issueListCmd)
 
 	// issue create
 	issueCreateCmd.Flags().String("project", "", "Project key (required)")
@@ -85,9 +87,8 @@ var issueGetCmd = &cobra.Command{
 			return handleAPIError(err, jsonMode)
 		}
 		if jsonMode {
-			raw, _ := cmd.Flags().GetBool("raw")
 			fields, _ := cmd.Flags().GetStringSlice("fields")
-			printIssueJSON(issue, raw, fields)
+			printIssueJSON(issue, rawOutputRequested(cmd), fields)
 			return nil
 		}
 		printIssueDetail(issue, cfg.Host)
@@ -128,9 +129,8 @@ var issueListCmd = &cobra.Command{
 			return handleAPIError(err, jsonMode)
 		}
 		if jsonMode {
-			raw, _ := cmd.Flags().GetBool("raw")
 			fields, _ := cmd.Flags().GetStringSlice("fields")
-			printIssuesJSON(issues, raw, fields)
+			printIssuesJSON(issues, rawOutputRequested(cmd), fields)
 			return nil
 		}
 		if len(issues) == 0 {
@@ -361,11 +361,19 @@ var issueDeleteCmd = &cobra.Command{
 			return nil
 		}
 		if !confirmAction(fmt.Sprintf("Type the issue key to confirm deletion (%s)", key), key) {
-			output.Warn("Deletion cancelled.")
+			if jsonMode {
+				output.PrintErrorJSONWithCode("Deletion cancelled.", 0, output.ErrValidation)
+			} else {
+				output.Warn("Deletion cancelled.")
+			}
 			return SilentErr(ExitBadArgs)
 		}
 		if err := client.Issues.Delete(key); err != nil {
 			return handleAPIError(err, jsonMode)
+		}
+		if jsonMode {
+			output.PrintJSON(map[string]string{"key": key, "status": "deleted"})
+			return nil
 		}
 		output.Success(fmt.Sprintf("Deleted %s", key))
 		return nil

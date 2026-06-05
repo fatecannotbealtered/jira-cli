@@ -9,6 +9,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/fatecannotbealtered/jira-cli/internal/output"
 )
 
 // mockJiraServer starts an httptest TLS server and sets JIRA_HOST/JIRA_TOKEN env vars.
@@ -30,6 +32,28 @@ func mockJiraServer(t *testing.T, handler http.HandlerFunc) *httptest.Server {
 func runRoot(t *testing.T, args ...string) (stdout, stderr string, err error) {
 	t.Helper()
 	lastExit = 0
+	origOutputFormat := outputFormat
+	origJSONCompatMode := jsonCompatMode
+	origJSONMode := jsonMode
+	origCompactMode := compactMode
+	origQuietMode := quietMode
+	origDryRun := dryRun
+	origForceMode := forceMode
+	origCompactJSON := output.CompactJSON
+	origErrorJSON := output.ErrorJSON
+	origQuiet := output.Quiet
+	defer func() {
+		outputFormat = origOutputFormat
+		jsonCompatMode = origJSONCompatMode
+		jsonMode = origJSONMode
+		compactMode = origCompactMode
+		quietMode = origQuietMode
+		dryRun = origDryRun
+		forceMode = origForceMode
+		output.CompactJSON = origCompactJSON
+		output.ErrorJSON = origErrorJSON
+		output.Quiet = origQuiet
+	}()
 
 	stdoutR, stdoutW, err := os.Pipe()
 	if err != nil {
@@ -73,6 +97,18 @@ func runRoot(t *testing.T, args ...string) (stdout, stderr string, err error) {
 	rootCmd.SetArgs(nil)
 
 	return stdoutBuf.String(), stderrBuf.String(), runErr
+}
+
+func textFormatUnlessSpecified(args []string) []string {
+	for _, arg := range args {
+		if arg == "--json" || arg == "--format" || strings.HasPrefix(arg, "--format=") {
+			return args
+		}
+	}
+	withFormat := make([]string, 0, len(args)+2)
+	withFormat = append(withFormat, "--format", "text")
+	withFormat = append(withFormat, args...)
+	return withFormat
 }
 
 // runRootExpectSilent runs CLI and asserts ErrSilent with expected exit code.

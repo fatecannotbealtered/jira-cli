@@ -30,6 +30,7 @@ func init() {
 	filterRunCmd.Flags().Bool("raw", false, "Return raw Jira API response (default: flat JSON)")
 	filterRunCmd.Flags().StringSlice("fields", nil, "Output only these fields (flat JSON only)")
 	filterCmd.AddCommand(filterRunCmd)
+	markRawFormat(filterRunCmd)
 
 	markWrite(filterCreateCmd)
 	markWrite(filterDeleteCmd)
@@ -141,6 +142,10 @@ var filterDeleteCmd = &cobra.Command{
 		if err := client.Filters.Delete(args[0]); err != nil {
 			return handleAPIError(err, jsonMode)
 		}
+		if jsonMode {
+			output.PrintJSON(map[string]string{"filterId": args[0], "status": "deleted"})
+			return nil
+		}
 		output.Success(fmt.Sprintf("Filter %s deleted", args[0]))
 		return nil
 	},
@@ -165,9 +170,8 @@ var filterRunCmd = &cobra.Command{
 			return handleAPIError(err, jsonMode)
 		}
 		if jsonMode {
-			raw, _ := cmd.Flags().GetBool("raw")
 			fields, _ := cmd.Flags().GetStringSlice("fields")
-			if raw {
+			if rawOutputRequested(cmd) {
 				output.PrintJSON(result)
 				return nil
 			}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	"github.com/fatecannotbealtered/jira-cli/internal/api"
@@ -32,8 +33,23 @@ var ErrSilent = errors.New("")
 // version is injected by goreleaser ldflags.
 var version = "dev"
 
-// jsonMode is the global --json flag.
-var jsonMode bool
+const (
+	outputFormatJSON = "json"
+	outputFormatText = "text"
+	outputFormatRaw  = "raw"
+)
+
+// outputFormat is the global --format value.
+var outputFormat = outputFormatJSON
+
+// jsonCompatMode is the compatibility --json flag.
+var jsonCompatMode bool
+
+// jsonMode reports whether command success output should use the machine-readable branch.
+var jsonMode = true
+
+// compactMode is the global --compact flag.
+var compactMode bool
 
 // forceMode is the global --force flag.
 var forceMode bool
@@ -83,21 +99,105 @@ func init() {
 	rootCmd.Version = version
 	rootCmd.CompletionOptions.DisableDefaultCmd = true
 
-	rootCmd.PersistentFlags().BoolVar(&jsonMode, "json", false, "Output result as JSON")
+	rootCmd.PersistentFlags().StringVar(&outputFormat, "format", outputFormatJSON, "Output format: json, text, or raw")
+	rootCmd.PersistentFlags().BoolVar(&jsonCompatMode, "json", false, "Compatibility alias for --format json")
+	rootCmd.PersistentFlags().BoolVar(&compactMode, "compact", false, "Emit compact JSON (only with --format json)")
 	rootCmd.PersistentFlags().BoolVar(&forceMode, "force", false, "Skip confirmation prompts")
-	rootCmd.PersistentFlags().BoolVar(&quietMode, "quiet", false, "Suppress non-JSON stdout output (for scripts and AI Agents)")
+	rootCmd.PersistentFlags().BoolVar(&quietMode, "quiet", false, "Suppress auxiliary text output (does not suppress json/raw results)")
 	rootCmd.PersistentFlags().BoolVar(&dryRun, "dry-run", false, "Show what would be done without executing")
 
 	cobra.OnInitialize(func() {
-		output.Quiet = quietMode
+		output.Quiet = false
 	})
 
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		lastExit = 0
 		cmdStartTime = time.Now()
 		execCmd = cmd
+		if err := configureOutputMode(cmd); err != nil {
+			return err
+		}
 		return nil
 	}
+}
+
+func configureOutputMode(cmd *cobra.Command) error {
+	formatChanged := persistentFlagChanged(cmd, "format")
+	jsonChanged := persistentFlagChanged(cmd, "json")
+	effectiveFormat := strings.ToLower(strings.TrimSpace(outputFormat))
+	if effectiveFormat == "" {
+		effectiveFormat = outputFormatJSON
+	}
+	if jsonChanged && formatChanged && effectiveFormat != outputFormatJSON {
+		return formatArgumentError(effectiveFormat, "--json cannot be used with --format "+effectiveFormat)
+	}
+	if jsonChanged && !formatChanged {
+		effectiveFormat = outputFormatJSON
+	}
+	switch effectiveFormat {
+	case outputFormatJSON, outputFormatText, outputFormatRaw:
+	default:
+		return formatArgumentError(outputFormatJSON, "--format must be one of: json, text, raw")
+	}
+	if legacyRawRequested(cmd) {
+		if formatChanged && effectiveFormat == outputFormatText {
+			return formatArgumentError(effectiveFormat, "--raw cannot be used with --format text")
+		}
+		effectiveFormat = outputFormatRaw
+	}
+	if compactMode && effectiveFormat != outputFormatJSON {
+		return formatArgumentError(effectiveFormat, "--compact can only be used with --format json")
+	}
+	if fieldsFlagChanged(cmd) && effectiveFormat != outputFormatJSON {
+		return formatArgumentError(effectiveFormat, "--fields can only be used with --format json")
+	}
+	if effectiveFormat == outputFormatRaw && !supportsRawFormat(cmd) {
+		return formatArgumentError(effectiveFormat, cmd.CommandPath()+" does not support --format raw")
+	}
+
+	outputFormat = effectiveFormat
+	jsonMode = effectiveFormat != outputFormatText
+	output.CompactJSON = compactMode && effectiveFormat == outputFormatJSON
+	output.ErrorJSON = effectiveFormat != outputFormatText
+	output.Quiet = effectiveFormat != outputFormatText || quietMode
+	return nil
+}
+
+func persistentFlagChanged(cmd *cobra.Command, name string) bool {
+	f := cmd.Root().PersistentFlags().Lookup(name)
+	return f != nil && f.Changed
+}
+
+func fieldsFlagChanged(cmd *cobra.Command) bool {
+	f := cmd.Flags().Lookup("fields")
+	return f != nil && f.Changed
+}
+
+func legacyRawRequested(cmd *cobra.Command) bool {
+	f := cmd.Flags().Lookup("raw")
+	if f == nil || !f.Changed {
+		return false
+	}
+	v, err := cmd.Flags().GetBool("raw")
+	return err == nil && v
+}
+
+func formatArgumentError(format, msg string) error {
+	if format == outputFormatText {
+		output.ErrorJSON = false
+		output.Error(msg)
+	} else {
+		output.CompactJSON = compactMode
+		output.PrintErrorJSONWithCode(msg, 0, output.ErrValidation)
+	}
+	return SilentErr(ExitBadArgs)
+}
+
+func rawOutputRequested(cmd *cobra.Command) bool {
+	if outputFormat == outputFormatRaw {
+		return true
+	}
+	return legacyRawRequested(cmd)
 }
 
 // Execute runs the root command.
@@ -105,11 +205,61 @@ func Execute() error {
 	lastExit = 0
 	execCmd = nil
 	err := rootCmd.Execute()
+	if err != nil && !errors.Is(err, ErrSilent) {
+		err = handleCommandError(err)
+	}
 	if execCmd != nil && isWriteCommand(execCmd) {
 		duration := time.Since(cmdStartTime)
 		audit.Log(execCmd.CommandPath(), os.Args[1:], lastExit, duration.Milliseconds())
 	}
 	return err
+}
+
+func handleCommandError(err error) error {
+	if formatErr := validateGlobalOutputFlagsForError(); formatErr != nil {
+		return formatErr
+	}
+	if errorOutputFormat() == outputFormatText {
+		output.ErrorJSON = false
+		output.Error(err.Error())
+	} else {
+		output.CompactJSON = compactMode
+		output.PrintErrorJSONWithCode(err.Error(), 0, output.ErrValidation)
+	}
+	setExitCode(ExitBadArgs)
+	return ErrSilent
+}
+
+func validateGlobalOutputFlagsForError() error {
+	formatChanged := persistentFlagChanged(rootCmd, "format")
+	jsonChanged := persistentFlagChanged(rootCmd, "json")
+	effectiveFormat := strings.ToLower(strings.TrimSpace(outputFormat))
+	if effectiveFormat == "" {
+		effectiveFormat = outputFormatJSON
+	}
+	if jsonChanged && formatChanged && effectiveFormat != outputFormatJSON {
+		return formatArgumentError(effectiveFormat, "--json cannot be used with --format "+effectiveFormat)
+	}
+	switch effectiveFormat {
+	case outputFormatJSON, outputFormatText, outputFormatRaw:
+	default:
+		return formatArgumentError(outputFormatJSON, "--format must be one of: json, text, raw")
+	}
+	if compactMode && effectiveFormat != outputFormatJSON {
+		return formatArgumentError(effectiveFormat, "--compact can only be used with --format json")
+	}
+	return nil
+}
+
+func errorOutputFormat() string {
+	format := strings.ToLower(strings.TrimSpace(outputFormat))
+	if format == "" {
+		format = outputFormatJSON
+	}
+	if format == outputFormatText {
+		return outputFormatText
+	}
+	return outputFormatJSON
 }
 
 // handleAPIError handles API errors with JSON mode support.
@@ -161,7 +311,11 @@ func confirmAction(prompt, expected string) bool {
 	if forceMode {
 		return true
 	}
-	fmt.Printf("%s: ", prompt)
+	if jsonMode {
+		fmt.Fprintf(os.Stderr, "%s: ", prompt)
+	} else {
+		fmt.Printf("%s: ", prompt)
+	}
 	var input string
 	_, err := fmt.Fscan(os.Stdin, &input)
 	if err != nil {
@@ -175,7 +329,7 @@ func confirmAction(prompt, expected string) bool {
 }
 
 // dryRunOutput outputs a dry-run message and returns true if --dry-run is set.
-// If --json is also set, outputs as JSON; otherwise plain text.
+// Machine-readable formats output JSON; text format outputs a human-readable note.
 func dryRunOutput(action string, detail map[string]any) bool {
 	if !dryRun {
 		return false
@@ -201,6 +355,18 @@ func markWrite(cmd *cobra.Command) {
 		cmd.Annotations = map[string]string{}
 	}
 	cmd.Annotations["write"] = "true"
+}
+
+// markRawFormat marks a command as supporting --format raw.
+func markRawFormat(cmd *cobra.Command) {
+	if cmd.Annotations == nil {
+		cmd.Annotations = map[string]string{}
+	}
+	cmd.Annotations["format.raw"] = "true"
+}
+
+func supportsRawFormat(cmd *cobra.Command) bool {
+	return cmd.Annotations["format.raw"] == "true"
 }
 
 // newClient loads config and creates an API client.

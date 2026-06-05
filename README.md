@@ -11,7 +11,7 @@ Full-featured Jira Data Center CLI for humans and AI Agents. Manage issues, spri
 
 Built with Go. Single static binary (small dependency footprint via `go.mod`). No separate runtime to install.
 
-[Installation](#installation) · [Updating](#updating) · [Authentication](#authentication) · [Commands](#commands) · [JSON Output](#json-output) · [Security](#security) · [Contributing](#contributing) · [Disclaimer](#disclaimer)
+[Installation](#installation) · [Updating](#updating) · [Authentication](#authentication) · [Commands](#commands) · [Output Formats](#output-formats) · [Security](#security) · [Contributing](#contributing) · [Disclaimer](#disclaimer)
 
 ## Disclaimer
 
@@ -22,7 +22,7 @@ This project is shared for **personal learning, research, and everyday productiv
 | Capability | Description |
 |---|---|
 | 🎯 **Complete Coverage** | Issues, Sprints, Boards, Epics, Projects, Users, Filters |
-| 🤖 **AI Friendly** | `--json` flat output (token-efficient), `--quiet`, `--dry-run`, `--force`, `--fields`, `--raw` |
+| 🤖 **AI Friendly** | JSON by default, `--format json\|text\|raw`, `--compact`, `--quiet`, `--dry-run`, `--force`, `--fields` |
 | ⚡ **Single Binary** | Download and run; no JVM/Node required for the CLI itself |
 | 🔄 **Smart Retry** | Auto-retry on 429 rate limits and 5xx errors with exponential backoff |
 | 🌈 **Beautiful Output** | Colored tables with CJK character support |
@@ -40,7 +40,8 @@ This project is shared for **personal learning, research, and everyday productiv
 Copy the block below to your agent (or run it yourself):
 
 ```bash
-# Please install jira-cli and use it for all Jira DC operations going forward (always pass --json).
+# Please install jira-cli and use it for all Jira DC operations going forward.
+# Machine-readable JSON is the default; use --format text only for human-readable output.
 # Install CLI (requires curl on PATH — used to download the binary)
 npm install -g @fatecannotbealtered-/jira-cli
 
@@ -49,7 +50,7 @@ npx skills add fatecannotbealtered/jira-cli -y -g
 
 # Login and verify
 jira-cli login
-jira-cli doctor --json
+jira-cli doctor
 ```
 
 Optional: `jira-cli install-skill` copies the bundled skill to `~/.openclaw/skills` for OpenClaw-compatible agents.
@@ -67,7 +68,7 @@ Download from [GitHub Releases](https://github.com/fatecannotbealtered/jira-cli/
 ## Updating
 
 ```bash
-jira-cli update --check --json       # check latest GitHub Release
+jira-cli update --check              # check latest GitHub Release
 jira-cli update                      # update a standalone binary
 jira-cli update --version v1.2.3     # install a specific release
 ```
@@ -109,7 +110,7 @@ Environment variables take precedence over the config file. This is the recommen
 ```bash
 export JIRA_HOST=https://jira.company.com
 export JIRA_TOKEN=<your-personal-access-token>
-jira-cli doctor --json   # verify authValid is true
+jira-cli doctor   # verify authValid is true
 ```
 
 ### Generating a PAT
@@ -134,7 +135,7 @@ jira-cli issue create --project PROJ --summary "Sized story" --field "Story Poin
 jira-cli issue edit PROJ-123 --priority High --assignee me
 jira-cli issue edit PROJ-123 --field "Story Points=8" --field "Team=Backend"
 jira-cli issue delete PROJ-123 --force          # --force skips confirmation prompt
-jira-cli issue delete PROJ-123 --dry-run --json   # preview delete (no confirmation prompt)
+jira-cli issue delete PROJ-123 --dry-run   # preview delete (no confirmation prompt)
 
 # Clone
 jira-cli issue clone PROJ-123
@@ -217,49 +218,60 @@ jira-cli user search --query "john"
 jira-cli user me
 jira-cli filter list
 jira-cli filter run <filterId>
-jira-cli filter run <filterId> --json --fields key,summary,status
-jira-cli filter run <filterId> --json --raw
+jira-cli filter run <filterId> --fields key,summary,status
+jira-cli --format raw filter run <filterId>
 ```
 
-## JSON Output
+## Output Formats
 
-All commands support `--json` for machine-readable output. **Success JSON goes to stdout; error JSON goes to stderr** — pipe or capture stdout for data, check `$?` and stderr for failures.
+`jira-cli` defaults to machine-readable JSON, so scripts and AI Agents can omit output flags. Use `--format json|text|raw` to choose the result format:
 
-By default, issue and sprint data is returned in a **flat, token-efficient format** (ideal for AI Agents):
+- `json` is the default. Success JSON goes to stdout; error JSON goes to stderr.
+- `text` is for human-readable summaries, tables, colors, diff/log text, and prompts.
+- `raw` is for unwrapped raw command results where supported. Unsupported commands return an argument error instead of silently downgrading.
+
+`--json` remains as a compatibility alias for `--format json`, but new scripts should rely on the default or use `--format json`. `--json` cannot be combined with `--format text` or `--format raw`.
+
+`--compact` only affects JSON. `--fields` only works with JSON output. `--quiet` suppresses auxiliary text output only; it does not suppress JSON or raw main results.
+
+By default, issue and sprint data is returned in a **flat, token-efficient JSON format** (ideal for AI Agents):
 
 ```bash
 # Flat JSON (default) — minimal fields, low token cost
-jira-cli issue get PROJ-123 --json
-jira-cli search "project = PROJ" --json | jq '.issues[].key'
+jira-cli issue get PROJ-123
+jira-cli search "project = PROJ" | jq '.issues[].key'
 
 # issue list returns a bare array; search wraps issues in pagination metadata
 # filter run with --fields also returns a bare trimmed array
-jira-cli issue list --project PROJ --json | jq '.[].key'
-jira-cli search "project = PROJ" --json | jq '.issues[].key'
-jira-cli filter run 12345 --json --fields key,summary | jq '.[].key'
+jira-cli issue list --project PROJ | jq '.[].key'
+jira-cli search "project = PROJ" | jq '.issues[].key'
+jira-cli filter run 12345 --fields key,summary | jq '.[].key'
 
 # Trim flat JSON output (issue get / issue list / sprint / filter run)
-jira-cli issue get PROJ-123 --json --fields key,summary,status,assignee
+jira-cli issue get PROJ-123 --fields key,summary,status,assignee
 
 # search --fields controls which fields Jira fetches (API request), not output trimming
-jira-cli search "project = PROJ" --fields summary,status,customfield_10001 --json
+jira-cli search "project = PROJ" --fields summary,status,customfield_10001
 
 # Raw Jira API response (full nested structure)
-jira-cli issue get PROJ-123 --json --raw
+jira-cli --format raw issue get PROJ-123
 
-# Clean output for scripts (suppress all non-JSON noise on stdout)
-jira-cli issue get PROJ-123 --json --quiet
+# Human-readable output
+jira-cli --format text issue get PROJ-123
+
+# Compact JSON for logs or pipes
+jira-cli --compact issue get PROJ-123
 
 # Preview destructive operations without executing
-jira-cli issue delete PROJ-123 --dry-run --json
+jira-cli issue delete PROJ-123 --dry-run
 ```
 
 ### Verify connectivity (`doctor`)
 
-When using `--json`, check the `authValid` field (exit code 3 on auth/config failure):
+With the default JSON output, check the `authValid` field (exit code 3 on auth/config failure):
 
 ```bash
-jira-cli doctor --json | jq '.authValid'   # must be true
+jira-cli doctor | jq '.authValid'   # must be true
 ```
 
 Error responses (stderr) include machine-readable error codes and actionable hints:
@@ -275,7 +287,7 @@ Error responses (stderr) include machine-readable error codes and actionable hin
 
 Set `NO_COLOR=1` to disable colored output (useful in CI/CD).
 
-Run `jira-cli reference` to get a complete listing of all commands and flags in structured markdown.
+Run `jira-cli reference` to get a structured JSON listing of all commands and flags. Use `jira-cli --format text reference` for the markdown reference.
 
 ## Environment Variables
 
@@ -303,19 +315,21 @@ Credentials stored at `~/.jira-cli/config.json` (permissions: 0600):
 
 | Flag | Description |
 |---|---|
-| `--json` | Output as JSON (flat format by default; use `--raw` for full Jira response) |
+| `--format json\|text\|raw` | Control output format. Default: `json` |
+| `--compact` | Emit compact JSON (only with `--format json`) |
+| `--json` | Compatibility alias for `--format json`; not recommended for new scripts |
 | `--force` | Skip interactive confirmation prompts |
-| `--quiet` | Suppress non-JSON stdout output (for scripts and AI Agents) |
+| `--quiet` | Suppress auxiliary text output; does not suppress JSON/raw main results |
 | `--dry-run` | Show what would be done without executing (supported by write/update commands) |
 
 ### Per-command flags
 
 | Flag | Commands | Description |
 |---|---|---|
-| `--raw` | `issue get`, `issue list`, `search`, `filter run`, `sprint list`, `sprint issues`, `sprint active` | Return raw Jira API response instead of flat format |
-| `--fields` | `issue get`, `issue list`, `sprint list`, `sprint issues`, `filter run` | **Output trimming** — include only listed fields in flat JSON (e.g. `--fields key,summary,status`) |
-| `--fields` | `search` only | **Jira fetch fields** — comma-separated fields to request from the API (e.g. `--fields summary,status,customfield_10001`); does not trim flat output |
-| `--out` | `issue attachments` | Download attachments into this directory instead of listing (default cwd via the dir you pass); with `--json` prints `{id, filename, path, mimeType}` |
+| `--raw` | `issue get`, `issue list`, `search`, `filter run`, `sprint list`, `sprint issues`, `sprint active` | Legacy alias for `--format raw` on commands that support raw output |
+| `--fields` | `issue get`, `issue list`, `sprint list`, `sprint issues`, `filter run` | **JSON output trimming** — include only listed fields in flat JSON (e.g. `--fields key,summary,status`) |
+| `--fields` | `search` only | **Jira fetch fields** — comma-separated fields to request from the API (e.g. `--fields summary,status,customfield_10001`); only valid with JSON output |
+| `--out` | `issue attachments` | Download attachments into this directory instead of listing (default cwd via the dir you pass); JSON output prints `{id, filename, path, mimeType}` |
 | `--id` | `issue attachments` | With `--out`, download only the attachment with this ID (exit code 4 if not found) |
 
 ## Troubleshooting
@@ -339,7 +353,7 @@ Credentials stored at `~/.jira-cli/config.json` (permissions: 0600):
 - No credentials are logged or transmitted to third parties
 - Environment variables `JIRA_HOST` and `JIRA_TOKEN` take precedence over config file
 
-> **AI Agent Note:** This tool can be invoked by AI Agents to automate Jira operations. Use `--force` to skip interactive prompts and `--json` for structured output. Set `JIRA_HOST` and `JIRA_TOKEN` environment variables for non-interactive authentication.
+> **AI Agent Note:** This tool can be invoked by AI Agents to automate Jira operations. Structured JSON is the default; use `--format text` only when human-readable output is needed. Set `JIRA_HOST` and `JIRA_TOKEN` environment variables for non-interactive authentication.
 
 For vulnerability reports, see [SECURITY.md](SECURITY.md).
 

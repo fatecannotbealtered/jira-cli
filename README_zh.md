@@ -11,7 +11,7 @@
 
 Go 构建，标准库与少量固定依赖，单文件二进制。
 
-[安装](#安装) · [更新](#更新) · [认证](#认证) · [命令](#命令) · [JSON 输出](#json-输出) · [安全](#安全) · [贡献](#贡献) · [使用说明](#使用说明)
+[安装](#安装) · [更新](#更新) · [认证](#认证) · [命令](#命令) · [输出格式](#输出格式) · [安全](#安全) · [贡献](#贡献) · [使用说明](#使用说明)
 
 ## 使用说明
 
@@ -22,7 +22,7 @@ Go 构建，标准库与少量固定依赖，单文件二进制。
 | 能力 | 说明 |
 |------|------|
 | 🎯 **完整覆盖** | Issue、Sprint、Board、Epic、项目、用户、过滤器 |
-| 🤖 **AI 友好** | `--json` 扁平输出（省 token）、`--quiet`、`--dry-run`、`--force`、`--fields`、`--raw` |
+| 🤖 **AI 友好** | 默认 JSON 输出、`--format json\|text\|raw`、`--compact`、`--quiet`、`--dry-run`、`--force`、`--fields` |
 | ⚡ **单文件二进制** | 无需单独安装运行时，下载即用 |
 | 🔄 **智能重试** | 自动处理 429 限流和 5xx 错误（指数退避） |
 | 🌈 **美观输出** | 彩色表格，支持中日韩字符宽度 |
@@ -40,7 +40,8 @@ Go 构建，标准库与少量固定依赖，单文件二进制。
 将下面整段复制发给您的 Agent（或自行执行）：
 
 ```bash
-# 请帮我安装 jira-cli，并记住以后操作 Jira DC 都使用 jira-cli（查询时加 --json）。
+# 请帮我安装 jira-cli，并记住以后操作 Jira DC 都使用 jira-cli。
+# 默认输出就是机器可读 JSON；只有需要人工阅读时才加 --format text。
 # 安装 CLI（需要 PATH 上有 curl — postinstall 会用它下载二进制）
 npm install -g @fatecannotbealtered-/jira-cli
 
@@ -49,7 +50,7 @@ npx skills add fatecannotbealtered/jira-cli -y -g
 
 # 登录并验证
 jira-cli login
-jira-cli doctor --json
+jira-cli doctor
 ```
 
 可选：`jira-cli install-skill` 将内置 skill 复制到 `~/.openclaw/skills`，供 OpenClaw 兼容 Agent 使用。
@@ -66,7 +67,7 @@ go install github.com/fatecannotbealtered/jira-cli/cmd/jira-cli@latest
 ## 更新
 
 ```bash
-jira-cli update --check --json       # 检查最新 GitHub Release
+jira-cli update --check              # 检查最新 GitHub Release
 jira-cli update                      # 更新独立二进制
 jira-cli update --version v1.2.3     # 安装指定版本
 ```
@@ -108,7 +109,7 @@ jira-cli login --host https://jira.company.com --token <PAT>
 ```bash
 export JIRA_HOST=https://jira.company.com
 export JIRA_TOKEN=<your-personal-access-token>
-jira-cli doctor --json   # 确认 authValid 为 true
+jira-cli doctor   # 确认 authValid 为 true
 ```
 
 ### 生成 PAT
@@ -133,7 +134,7 @@ jira-cli issue create --project PROJ --summary "新功能" --field "Story Points
 jira-cli issue edit PROJ-123 --priority High --assignee me
 jira-cli issue edit PROJ-123 --field "Story Points=8" --field "Team=Backend"
 jira-cli issue delete PROJ-123 --force          # --force 跳过确认提示
-jira-cli issue delete PROJ-123 --dry-run --json   # 预览删除（无需确认）
+jira-cli issue delete PROJ-123 --dry-run   # 预览删除（无需确认）
 
 # 克隆
 jira-cli issue clone PROJ-123
@@ -213,49 +214,60 @@ jira-cli user search --query "john"
 jira-cli user me
 jira-cli filter list
 jira-cli filter run <filterId>
-jira-cli filter run <filterId> --json --fields key,summary,status
-jira-cli filter run <filterId> --json --raw
+jira-cli filter run <filterId> --fields key,summary,status
+jira-cli --format raw filter run <filterId>
 ```
 
-## JSON 输出
+## 输出格式
 
-所有命令支持 `--json` 获取机器可读输出。**成功 JSON 输出到 stdout；错误 JSON 输出到 stderr** —— 用管道或重定向捕获 stdout 取数据，结合 `$?` 和 stderr 判断失败。
+`jira-cli` 默认输出机器可读 JSON，脚本和 AI Agent 不需要额外加输出参数。使用 `--format json|text|raw` 控制结果格式：
 
-默认使用**扁平格式**（token 效率高，适合 AI Agent）：
+- `json` 是默认格式。成功 JSON 输出到 stdout；错误 JSON 输出到 stderr。
+- `text` 用于人工可读摘要、表格、彩色状态、diff/log 文本和交互提示。
+- `raw` 用于支持该格式的命令，返回未包装的原始结果。不支持 raw 的命令会明确返回参数错误，不会静默降级。
+
+`--json` 保留为 `--format json` 的兼容别名，但新脚本应依赖默认 JSON 或显式使用 `--format json`。`--json` 不能与 `--format text` 或 `--format raw` 同时使用。
+
+`--compact` 只影响 JSON。`--fields` 只适用于 JSON 输出。`--quiet` 只压制辅助文本输出，不压制 JSON/raw 主体结果。
+
+默认使用**扁平 JSON 格式**（token 效率高，适合 AI Agent）：
 
 ```bash
 # 扁平 JSON（默认）—— 最小字段，低 token 开销
-jira-cli issue get PROJ-123 --json
-jira-cli search "project = PROJ" --json | jq '.issues[].key'
+jira-cli issue get PROJ-123
+jira-cli search "project = PROJ" | jq '.issues[].key'
 
 # issue list 返回裸数组；search 用分页元数据包裹 issues
 # filter run 加 --fields 时也返回裸裁剪数组
-jira-cli issue list --project PROJ --json | jq '.[].key'
-jira-cli search "project = PROJ" --json | jq '.issues[].key'
-jira-cli filter run 12345 --json --fields key,summary | jq '.[].key'
+jira-cli issue list --project PROJ | jq '.[].key'
+jira-cli search "project = PROJ" | jq '.issues[].key'
+jira-cli filter run 12345 --fields key,summary | jq '.[].key'
 
 # 裁剪 flat JSON 输出（issue get / issue list / sprint / filter run）
-jira-cli issue get PROJ-123 --json --fields key,summary,status,assignee
+jira-cli issue get PROJ-123 --fields key,summary,status,assignee
 
 # search --fields 控制向 Jira 请求的字段（API 层），不是输出裁剪
-jira-cli search "project = PROJ" --fields summary,status,customfield_10001 --json
+jira-cli search "project = PROJ" --fields summary,status,customfield_10001
 
 # 原始 Jira API 响应（完整嵌套结构）
-jira-cli issue get PROJ-123 --json --raw
+jira-cli --format raw issue get PROJ-123
 
-# 干净输出（抑制 stdout 上所有非 JSON 噪声）
-jira-cli issue get PROJ-123 --json --quiet
+# 人工可读输出
+jira-cli --format text issue get PROJ-123
+
+# 紧凑 JSON，适合日志或管道
+jira-cli --compact issue get PROJ-123
 
 # 预览写操作（无需确认）
-jira-cli issue delete PROJ-123 --dry-run --json
+jira-cli issue delete PROJ-123 --dry-run
 ```
 
 ### 验证连通性（`doctor`）
 
-使用 `--json` 时检查 `authValid` 字段（认证/配置失败时退出码为 3）：
+默认 JSON 输出下检查 `authValid` 字段（认证/配置失败时退出码为 3）：
 
 ```bash
-jira-cli doctor --json | jq '.authValid'   # 必须为 true
+jira-cli doctor | jq '.authValid'   # 必须为 true
 ```
 
 错误响应（stderr）包含机器可读的错误码和可操作提示：
@@ -271,7 +283,7 @@ jira-cli doctor --json | jq '.authValid'   # 必须为 true
 
 设置 `NO_COLOR=1` 禁用彩色输出（适用于 CI/CD 环境）。
 
-运行 `jira-cli reference` 获取所有命令和标志的结构化列表。
+运行 `jira-cli reference` 获取所有命令和标志的结构化 JSON 列表；使用 `jira-cli --format text reference` 获取 Markdown 版本。
 
 ## 环境变量
 
@@ -288,18 +300,20 @@ jira-cli doctor --json | jq '.authValid'   # 必须为 true
 
 | 标志 | 说明 |
 |------|------|
-| `--json` | 以 JSON 格式输出（默认扁平格式；用 `--raw` 获取完整 Jira 响应） |
+| `--format json\|text\|raw` | 控制输出格式，默认 `json` |
+| `--compact` | 输出紧凑 JSON（仅适用于 `--format json`） |
+| `--json` | `--format json` 的兼容别名；新脚本不推荐使用 |
 | `--force` | 跳过交互式确认提示 |
-| `--quiet` | 抑制非 JSON 标准输出（适用于脚本和 AI Agent） |
+| `--quiet` | 压制辅助文本输出，不压制 JSON/raw 主体结果 |
 | `--dry-run` | 显示将要执行的操作但不实际执行（写命令和 update 支持） |
 
 ### 命令级标志
 
 | 标志 | 适用命令 | 说明 |
 |------|----------|------|
-| `--raw` | `issue get`、`issue list`、`search`、`filter run`、`sprint list`、`sprint issues`、`sprint active` | 返回原始 Jira API 响应而非扁平格式 |
-| `--fields` | `issue get`、`issue list`、`sprint list`、`sprint issues`、`filter run` | **输出裁剪** —— 在 flat JSON 中只保留指定字段（如 `--fields key,summary,status`） |
-| `--fields` | 仅 `search` | **Jira 请求字段** —— 逗号分隔，控制 API 拉取哪些字段（如 `--fields summary,status,customfield_10001`）；不裁剪 flat 输出 |
+| `--raw` | `issue get`、`issue list`、`search`、`filter run`、`sprint list`、`sprint issues`、`sprint active` | 兼容旧用法；等价于这些命令上的 `--format raw` |
+| `--fields` | `issue get`、`issue list`、`sprint list`、`sprint issues`、`filter run` | **JSON 输出裁剪** —— 在 flat JSON 中只保留指定字段（如 `--fields key,summary,status`） |
+| `--fields` | 仅 `search` | **Jira 请求字段** —— 逗号分隔，控制 API 拉取哪些字段（如 `--fields summary,status,customfield_10001`）；仅适用于 JSON 输出 |
 
 ## 配置文件
 
@@ -333,7 +347,7 @@ jira-cli doctor --json | jq '.authValid'   # 必须为 true
 - 凭据不会被记录或传输给第三方
 - 环境变量 `JIRA_HOST` 和 `JIRA_TOKEN` 优先于配置文件
 
-> **AI Agent 注意事项：** 此工具可被 AI Agent 调用以自动化 Jira 操作。使用 `--force` 跳过交互式确认，使用 `--json` 获取结构化输出。设置 `JIRA_HOST` 和 `JIRA_TOKEN` 环境变量进行非交互式认证。
+> **AI Agent 注意事项：** 此工具可被 AI Agent 调用以自动化 Jira 操作。默认输出就是结构化 JSON；只有需要人工可读结果时才使用 `--format text`。设置 `JIRA_HOST` 和 `JIRA_TOKEN` 环境变量进行非交互式认证。
 
 安全漏洞请见 [SECURITY.md](SECURITY.md)（勿在公开 issue 中披露未公开漏洞）。
 

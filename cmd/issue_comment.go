@@ -115,6 +115,10 @@ var commentDeleteCmd = &cobra.Command{
 		if err := client.Issues.DeleteComment(args[0], id); err != nil {
 			return handleAPIError(err, jsonMode)
 		}
+		if jsonMode {
+			output.PrintJSON(map[string]string{"issueKey": args[0], "commentId": id, "status": "deleted"})
+			return nil
+		}
 		output.Success(fmt.Sprintf("Comment %s deleted", id))
 		return nil
 	},

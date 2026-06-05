@@ -18,10 +18,15 @@ import (
 
 func resetCLIState(t *testing.T) {
 	t.Helper()
-	jsonMode = false
+	outputFormat = outputFormatJSON
+	jsonCompatMode = false
+	jsonMode = true
+	compactMode = false
 	dryRun = false
 	forceMode = false
 	quietMode = false
+	output.CompactJSON = false
+	output.ErrorJSON = false
 	output.Quiet = false
 	lastExit = 0
 	var reset func(*cobra.Command)
@@ -43,17 +48,17 @@ func resetCLIState(t *testing.T) {
 
 func issueRunRoot(t *testing.T, args ...string) (stdout, stderr string, err error) {
 	resetCLIState(t)
-	return runRoot(t, args...)
+	return runRoot(t, textFormatUnlessSpecified(args)...)
 }
 
 func issueRunOK(t *testing.T, args ...string) (stdout, stderr string) {
 	resetCLIState(t)
-	return runRootOK(t, args...)
+	return runRootOK(t, textFormatUnlessSpecified(args)...)
 }
 
 func issueRunSilent(t *testing.T, code int, args ...string) (stdout, stderr string) {
 	resetCLIState(t)
-	return runRootExpectSilent(t, code, args...)
+	return runRootExpectSilent(t, code, textFormatUnlessSpecified(args)...)
 }
 
 const (
@@ -288,7 +293,7 @@ func runRootWithStdinIssue(t *testing.T, stdin string, args ...string) (stdout, 
 	oldStdin := os.Stdin
 	os.Stdin = r
 	t.Cleanup(func() { os.Stdin = oldStdin })
-	return runRoot(t, args...)
+	return runRoot(t, textFormatUnlessSpecified(args)...)
 }
 
 func writeTempFile(t *testing.T, name, content string) string {

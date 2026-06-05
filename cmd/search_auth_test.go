@@ -12,6 +12,8 @@ import (
 	"testing"
 
 	"github.com/fatecannotbealtered/jira-cli/internal/config"
+	"github.com/fatecannotbealtered/jira-cli/internal/output"
+	"github.com/spf13/pflag"
 )
 
 func TestMain(m *testing.M) {
@@ -34,22 +36,37 @@ func resetLoginFlags(t *testing.T) {
 
 func resetCmdState(t *testing.T) {
 	t.Helper()
-	jsonMode = false
+	outputFormat = outputFormatJSON
+	jsonCompatMode = false
+	jsonMode = true
+	compactMode = false
 	quietMode = false
 	dryRun = false
 	forceMode = false
 	loginHostFlag = ""
 	loginTokenFlag = ""
-	_ = rootCmd.PersistentFlags().Set("json", "false")
-	_ = rootCmd.PersistentFlags().Set("quiet", "false")
-	_ = rootCmd.PersistentFlags().Set("dry-run", "false")
-	_ = rootCmd.PersistentFlags().Set("force", "false")
-	_ = searchCmd.Flags().Set("limit", "50")
-	_ = searchCmd.Flags().Set("fields", "")
-	_ = searchCmd.Flags().Set("order-by", "")
-	_ = searchCmd.Flags().Set("all", "false")
-	_ = searchCmd.Flags().Set("count", "false")
-	_ = searchCmd.Flags().Set("raw", "false")
+	output.CompactJSON = false
+	output.ErrorJSON = false
+	output.Quiet = false
+	resetFlagValue(rootCmd.PersistentFlags(), "format", outputFormatJSON)
+	resetFlagValue(rootCmd.PersistentFlags(), "json", "false")
+	resetFlagValue(rootCmd.PersistentFlags(), "compact", "false")
+	resetFlagValue(rootCmd.PersistentFlags(), "quiet", "false")
+	resetFlagValue(rootCmd.PersistentFlags(), "dry-run", "false")
+	resetFlagValue(rootCmd.PersistentFlags(), "force", "false")
+	resetFlagValue(searchCmd.Flags(), "limit", "50")
+	resetFlagValue(searchCmd.Flags(), "fields", "")
+	resetFlagValue(searchCmd.Flags(), "order-by", "")
+	resetFlagValue(searchCmd.Flags(), "all", "false")
+	resetFlagValue(searchCmd.Flags(), "count", "false")
+	resetFlagValue(searchCmd.Flags(), "raw", "false")
+}
+
+func resetFlagValue(flags *pflag.FlagSet, name, value string) {
+	if f := flags.Lookup(name); f != nil {
+		_ = f.Value.Set(value)
+		f.Changed = false
+	}
 }
 
 func runRootClean(t *testing.T, args ...string) (stdout, stderr string, err error) {
@@ -208,7 +225,7 @@ func TestSearch_NotConfigured(t *testing.T) {
 
 func TestSearch_EmptyJQL(t *testing.T) {
 	setupMockJira(t, jiraSearchHandler(t, nil))
-	_, stderr, err := runRootClean(t, "search", "")
+	_, stderr, err := runRootClean(t, "--format", "text", "search", "")
 	if err != ErrSilent {
 		t.Fatalf("expected ErrSilent, got %v", err)
 	}
@@ -225,7 +242,7 @@ func TestSearch_LimitValidation(t *testing.T) {
 
 	for _, limit := range []string{"0", "501"} {
 		t.Run("limit="+limit, func(t *testing.T) {
-			_, stderr, err := runRootClean(t, "search", "project = P", "--limit", limit)
+			_, stderr, err := runRootClean(t, "--format", "text", "search", "project = P", "--limit", limit)
 			if err != ErrSilent {
 				t.Fatalf("expected ErrSilent, got %v", err)
 			}
@@ -241,7 +258,7 @@ func TestSearch_LimitValidation(t *testing.T) {
 
 func TestSearch_DefaultPlain(t *testing.T) {
 	setupMockJira(t, jiraSearchHandler(t, nil))
-	stdout, _ := runRootOKClean(t, "search", "project = P", "--limit", "10")
+	stdout, _ := runRootOKClean(t, "--format", "text", "search", "project = P", "--limit", "10")
 	if !containsAny(stdout, "P-1", "P-2", "Showing 2 of 2") {
 		t.Fatalf("stdout=%q", stdout)
 	}
@@ -286,7 +303,7 @@ func TestSearch_DefaultEmptyPlain(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(emptySearchJSON))
 	}))
-	stdout, _ := runRootOKClean(t, "search", "project = NONE")
+	stdout, _ := runRootOKClean(t, "--format", "text", "search", "project = NONE")
 	if !containsAny(stdout, "No issues found") {
 		t.Fatalf("stdout=%q", stdout)
 	}
@@ -329,7 +346,7 @@ func TestSearch_CountPlainAndJSON(t *testing.T) {
 		_, _ = w.Write([]byte(`{"startAt":0,"maxResults":50,"total":42,"issues":[]}`))
 	}))
 
-	stdout, _ := runRootOKClean(t, "search", "project = P", "--count")
+	stdout, _ := runRootOKClean(t, "--format", "text", "search", "project = P", "--count")
 	if !strings.Contains(stdout, "Total: 42") {
 		t.Fatalf("stdout=%q", stdout)
 	}
@@ -361,7 +378,7 @@ func TestSearch_AllPlainAndJSON(t *testing.T) {
 		]}`))
 	}))
 
-	stdout, _ := runRootOKClean(t, "search", "--all", "project = P")
+	stdout, _ := runRootOKClean(t, "--format", "text", "search", "--all", "project = P")
 	if !containsAny(stdout, "P-1", "P-2") {
 		t.Fatalf("stdout=%q", stdout)
 	}
@@ -395,7 +412,7 @@ func TestSearch_AllEmptyPlain(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(emptySearchJSON))
 	}))
-	stdout, _ := runRootOKClean(t, "search", "--all", "project = NONE")
+	stdout, _ := runRootOKClean(t, "--format", "text", "search", "--all", "project = NONE")
 	if !containsAny(stdout, "No issues found") {
 		t.Fatalf("stdout=%q", stdout)
 	}
@@ -441,7 +458,7 @@ func TestSearch_AllAPIError(t *testing.T) {
 
 func TestDoctor_ConfigLoadError(t *testing.T) {
 	writeBadConfig(t)
-	_, stderr, err := runRootClean(t, "doctor")
+	_, stderr, err := runRootClean(t, "--format", "text", "doctor")
 	if err != ErrSilent || LastExitCode() != ExitAuth {
 		t.Fatalf("err=%v exit=%d", err, LastExitCode())
 	}
@@ -468,7 +485,7 @@ func TestDoctor_ConfigLoadErrorJSON(t *testing.T) {
 func TestDoctor_NotConfiguredPlain(t *testing.T) {
 	setupTestHome(t)
 
-	_, stderr, err := runRootClean(t, "doctor")
+	_, stderr, err := runRootClean(t, "--format", "text", "doctor")
 	if err != ErrSilent || LastExitCode() != ExitAuth {
 		t.Fatalf("err=%v exit=%d", err, LastExitCode())
 	}
@@ -502,7 +519,7 @@ func TestDoctor_ConnectionFailedPlain(t *testing.T) {
 		}
 		w.WriteHeader(http.StatusNotFound)
 	})
-	_, stderr, err := runRootClean(t, "doctor")
+	_, stderr, err := runRootClean(t, "--format", "text", "doctor")
 	if err != ErrSilent || LastExitCode() != ExitAuth {
 		t.Fatalf("err=%v exit=%d", err, LastExitCode())
 	}
@@ -535,7 +552,7 @@ func TestDoctor_ConnectionFailedJSON(t *testing.T) {
 
 func TestDoctor_SuccessPlain(t *testing.T) {
 	setupMockJira(t, jiraSearchHandler(t, nil))
-	stdout, _ := runRootOKClean(t, "doctor")
+	stdout, _ := runRootOKClean(t, "--format", "text", "doctor")
 	if !containsAny(stdout, "Config found", "PAT valid", "John Doe", "jdoe") {
 		t.Fatalf("stdout=%q", stdout)
 	}
@@ -560,7 +577,7 @@ func TestDoctor_SuccessJSON(t *testing.T) {
 
 func TestLogin_NonInteractiveInvalidHost(t *testing.T) {
 	resetLoginFlags(t)
-	_, stderr, err := runRootClean(t, "login", "--host", "http://jira.example.com", "--token", "pat")
+	_, stderr, err := runRootClean(t, "--format", "text", "login", "--host", "http://jira.example.com", "--token", "pat")
 	if err != ErrSilent || LastExitCode() != ExitBadArgs {
 		t.Fatalf("err=%v exit=%d", err, LastExitCode())
 	}
@@ -571,7 +588,7 @@ func TestLogin_NonInteractiveInvalidHost(t *testing.T) {
 
 func TestLogin_NonInteractiveEmptyToken(t *testing.T) {
 	resetLoginFlags(t)
-	_, stderr, err := runRootClean(t, "login", "--host", "https://jira.example.com", "--token", "   ")
+	_, stderr, err := runRootClean(t, "--format", "text", "login", "--host", "https://jira.example.com", "--token", "   ")
 	if err != ErrSilent || LastExitCode() != ExitBadArgs {
 		t.Fatalf("err=%v exit=%d", err, LastExitCode())
 	}
@@ -588,7 +605,7 @@ func TestLogin_NonInteractiveInvalidCredentials(t *testing.T) {
 			_, _ = w.Write([]byte(`{"errorMessages":["bad token"]}`))
 		}
 	})
-	_, stderr, err := runRootClean(t, "login", "--host", ts.URL, "--token", "bad-token")
+	_, stderr, err := runRootClean(t, "--format", "text", "login", "--host", ts.URL, "--token", "bad-token")
 	if err != ErrSilent || LastExitCode() != ExitAuth {
 		t.Fatalf("err=%v exit=%d", err, LastExitCode())
 	}
@@ -600,7 +617,7 @@ func TestLogin_NonInteractiveInvalidCredentials(t *testing.T) {
 func TestLogin_NonInteractiveSaveFailure(t *testing.T) {
 	resetLoginFlags(t)
 	ts := setupMockJiraBlockedConfig(t, jiraSearchHandler(t, nil))
-	_, stderr, err := runRootClean(t, "login", "--host", ts.URL, "--token", "good-token")
+	_, stderr, err := runRootClean(t, "--format", "text", "login", "--host", ts.URL, "--token", "good-token")
 	if err != ErrSilent || LastExitCode() != ExitAuth {
 		t.Fatalf("err=%v exit=%d", err, LastExitCode())
 	}
@@ -612,7 +629,7 @@ func TestLogin_NonInteractiveSaveFailure(t *testing.T) {
 func TestLogin_NonInteractiveSuccessPlain(t *testing.T) {
 	resetLoginFlags(t)
 	ts := setupMockJira(t, jiraSearchHandler(t, nil))
-	stdout, _ := runRootOKClean(t, "login", "--host", ts.URL, "--token", "good-token")
+	stdout, _ := runRootOKClean(t, "--format", "text", "login", "--host", ts.URL, "--token", "good-token")
 	if !containsAny(stdout, "Logged in as John Doe", "Config saved") {
 		t.Fatalf("stdout=%q", stdout)
 	}
@@ -639,7 +656,7 @@ func TestLogin_NonInteractiveSuccessJSON(t *testing.T) {
 func TestLogin_InteractiveSuccess(t *testing.T) {
 	resetLoginFlags(t)
 	ts := setupMockJira(t, jiraSearchHandler(t, nil))
-	stdout, _, err := runRootWithStdin(t, ts.URL+"\ngood-token\n", "login")
+	stdout, _, err := runRootWithStdin(t, ts.URL+"\ngood-token\n", "--format", "text", "login")
 	if err != nil {
 		t.Fatalf("unexpected error %v (exit=%d)", err, LastExitCode())
 	}
@@ -648,9 +665,28 @@ func TestLogin_InteractiveSuccess(t *testing.T) {
 	}
 }
 
+func TestLogin_InteractiveSuccessDefaultJSONStdout(t *testing.T) {
+	resetLoginFlags(t)
+	ts := setupMockJira(t, jiraSearchHandler(t, nil))
+	stdout, stderr, err := runRootWithStdin(t, ts.URL+"\ngood-token\n", "login")
+	if err != nil {
+		t.Fatalf("unexpected error %v (exit=%d)", err, LastExitCode())
+	}
+	var result map[string]string
+	if err := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &result); err != nil {
+		t.Fatalf("stdout is not clean JSON: %v\nstdout=%q\nstderr=%q", err, stdout, stderr)
+	}
+	if result["status"] != "ok" || result["username"] != "jdoe" {
+		t.Fatalf("result=%v", result)
+	}
+	if strings.Contains(stdout, "Jira host") || !strings.Contains(stderr, "Jira host") {
+		t.Fatalf("interactive prompt should be on stderr only, stdout=%q stderr=%q", stdout, stderr)
+	}
+}
+
 func TestLogin_InteractiveInvalidHost(t *testing.T) {
 	resetLoginFlags(t)
-	_, stderr, err := runRootWithStdin(t, "http://bad.example.com\n", "login")
+	_, stderr, err := runRootWithStdin(t, "http://bad.example.com\n", "--format", "text", "login")
 	if err != ErrSilent || LastExitCode() != ExitBadArgs {
 		t.Fatalf("err=%v exit=%d", err, LastExitCode())
 	}
@@ -662,7 +698,7 @@ func TestLogin_InteractiveInvalidHost(t *testing.T) {
 func TestLogin_InteractiveEmptyToken(t *testing.T) {
 	resetLoginFlags(t)
 	ts := setupMockJira(t, jiraSearchHandler(t, nil))
-	_, stderr, err := runRootWithStdin(t, ts.URL+"\n\n", "login")
+	_, stderr, err := runRootWithStdin(t, ts.URL+"\n\n", "--format", "text", "login")
 	if err != ErrSilent || LastExitCode() != ExitBadArgs {
 		t.Fatalf("err=%v exit=%d", err, LastExitCode())
 	}
@@ -679,7 +715,7 @@ func TestLogin_InteractiveInvalidCredentials(t *testing.T) {
 			_, _ = w.Write([]byte(`{"errorMessages":["bad token"]}`))
 		}
 	})
-	_, stderr, err := runRootWithStdin(t, ts.URL+"\nbad-token\n", "login")
+	_, stderr, err := runRootWithStdin(t, ts.URL+"\nbad-token\n", "--format", "text", "login")
 	if err != ErrSilent || LastExitCode() != ExitAuth {
 		t.Fatalf("err=%v exit=%d", err, LastExitCode())
 	}
@@ -691,7 +727,7 @@ func TestLogin_InteractiveInvalidCredentials(t *testing.T) {
 func TestLogin_InteractiveSaveFailure(t *testing.T) {
 	resetLoginFlags(t)
 	ts := setupMockJiraBlockedConfig(t, jiraSearchHandler(t, nil))
-	_, stderr, err := runRootWithStdin(t, ts.URL+"\ngood-token\n", "login")
+	_, stderr, err := runRootWithStdin(t, ts.URL+"\ngood-token\n", "--format", "text", "login")
 	if err != ErrSilent || LastExitCode() != ExitAuth {
 		t.Fatalf("err=%v exit=%d", err, LastExitCode())
 	}
@@ -703,7 +739,7 @@ func TestLogin_InteractiveSaveFailure(t *testing.T) {
 func TestLogin_InteractiveHostFlagTokenFromStdin(t *testing.T) {
 	resetLoginFlags(t)
 	ts := setupMockJira(t, jiraSearchHandler(t, nil))
-	stdout, _, err := runRootWithStdin(t, "good-token\n", "login", "--host", ts.URL)
+	stdout, _, err := runRootWithStdin(t, "good-token\n", "--format", "text", "login", "--host", ts.URL)
 	if err != nil {
 		t.Fatalf("unexpected error %v (exit=%d)", err, LastExitCode())
 	}
@@ -714,7 +750,7 @@ func TestLogin_InteractiveHostFlagTokenFromStdin(t *testing.T) {
 
 func TestLogout_Success(t *testing.T) {
 	saveTestConfig(t, "https://jira.example.com", "token")
-	stdout, _ := runRootOKClean(t, "logout")
+	stdout, _ := runRootOKClean(t, "--format", "text", "logout")
 	if !containsAny(stdout, "Logged out") {
 		t.Fatalf("stdout=%q", stdout)
 	}
@@ -726,7 +762,7 @@ func TestLogout_Success(t *testing.T) {
 func TestLogout_DeleteFailure(t *testing.T) {
 	home := setupTestHome(t)
 	blockConfigDelete(t, home)
-	_, stderr, err := runRootClean(t, "logout")
+	_, stderr, err := runRootClean(t, "--format", "text", "logout")
 	if err != ErrSilent || LastExitCode() != ExitAuth {
 		t.Fatalf("err=%v exit=%d", err, LastExitCode())
 	}

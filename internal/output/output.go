@@ -35,6 +35,9 @@ var noColor = os.Getenv("NO_COLOR") != "" || !isTerminal(os.Stdout)
 // Quiet suppresses all non-error output when true.
 var Quiet bool
 
+// ErrorJSON emits Error messages as structured JSON when true.
+var ErrorJSON bool
+
 // colorize wraps msg with ANSI color codes when color is enabled.
 func colorize(code, msg string) string {
 	if noColor {
@@ -53,6 +56,10 @@ func Success(msg string) {
 
 // Error prints a red cross message to stderr.
 func Error(msg string) {
+	if ErrorJSON {
+		PrintErrorJSONWithCode(msg, 0, ErrValidation)
+		return
+	}
 	fmt.Fprintln(os.Stderr, colorize(ansiRed, "✖ "+msg))
 }
 

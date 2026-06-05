@@ -51,7 +51,24 @@ var issueBulkTransitionCmd = &cobra.Command{
 			return SilentErr(ExitBadArgs)
 		}
 
+		type result struct {
+			Key    string `json:"key"`
+			Status string `json:"status"`
+			Error  string `json:"error,omitempty"`
+		}
+
 		if len(issueKeys) == 0 {
+			if jsonMode {
+				output.PrintJSON(map[string]any{
+					"targetStatus": targetStatus,
+					"total":        0,
+					"success":      0,
+					"skipped":      0,
+					"failed":       0,
+					"results":      []result{},
+				})
+				return nil
+			}
 			output.Info("No issues to transition.")
 			return nil
 		}
@@ -60,11 +77,6 @@ var issueBulkTransitionCmd = &cobra.Command{
 			return nil
 		}
 
-		type result struct {
-			Key    string `json:"key"`
-			Status string `json:"status"`
-			Error  string `json:"error,omitempty"`
-		}
 		var results []result
 		successCount := 0
 		skipCount := 0

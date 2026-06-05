@@ -24,6 +24,7 @@ func init() {
 	searchCmd.Flags().Bool("all", false, "Fetch all results (auto-paginate)")
 	searchCmd.Flags().Bool("count", false, "Only show total count")
 	searchCmd.Flags().Bool("raw", false, "Return raw Jira API response (default: flat JSON)")
+	markRawFormat(searchCmd)
 	rootCmd.AddCommand(searchCmd)
 }
 
@@ -86,8 +87,7 @@ func runSearch(cmd *cobra.Command, args []string) error {
 			return handleAPIError(err, jsonMode)
 		}
 		if jsonMode {
-			raw, _ := cmd.Flags().GetBool("raw")
-			if raw {
+			if rawOutputRequested(cmd) {
 				output.PrintJSON(map[string]any{
 					"total":  len(issues),
 					"issues": issues,
@@ -117,8 +117,7 @@ func runSearch(cmd *cobra.Command, args []string) error {
 	}
 
 	if jsonMode {
-		raw, _ := cmd.Flags().GetBool("raw")
-		if raw {
+		if rawOutputRequested(cmd) {
 			output.PrintJSON(result)
 		} else {
 			output.PrintJSON(map[string]any{

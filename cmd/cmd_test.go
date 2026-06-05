@@ -181,6 +181,9 @@ func TestRootHelp_ContainsUsage(t *testing.T) {
 	if !strings.Contains(out, "--json") {
 		t.Error("help should document --json flag")
 	}
+	if !strings.Contains(out, "--format") {
+		t.Error("help should document --format flag")
+	}
 	if !strings.Contains(out, "--quiet") {
 		t.Error("help should document --quiet flag")
 	}
@@ -207,12 +210,7 @@ func TestRootVersion_ContainsValue(t *testing.T) {
 // ─── Reference command ──────────────────────────────────────────────────────
 
 func TestReference_ContainsCommands(t *testing.T) {
-	buf := new(bytes.Buffer)
-	rootCmd.SetOut(buf)
-	rootCmd.SetArgs([]string{"reference"})
-	_ = rootCmd.Execute()
-	rootCmd.SetOut(os.Stdout)
-	out := buf.String()
+	out, _ := runRootOKClean(t, "--format", "text", "reference")
 	if !strings.Contains(out, "# jira-cli Command Reference") {
 		t.Error("reference should start with header")
 	}

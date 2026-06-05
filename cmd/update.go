@@ -161,7 +161,11 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 		fmt.Sprintf("Update jira-cli from %s to %s? Type %s to confirm", currentVersion, latestVersion, latestVersion),
 		latestVersion,
 	) {
-		output.Warn("Update cancelled.")
+		if jsonMode {
+			output.PrintErrorJSONWithCode("Update cancelled.", 0, output.ErrValidation)
+		} else {
+			output.Warn("Update cancelled.")
+		}
 		return SilentErr(ExitBadArgs)
 	}
 

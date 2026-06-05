@@ -22,15 +22,18 @@ func init() {
 	sprintListCmd.Flags().Bool("raw", false, "Return raw Jira API response (default: flat JSON)")
 	sprintListCmd.Flags().StringSlice("fields", nil, "Output only these fields (flat JSON only)")
 	sprintCmd.AddCommand(sprintListCmd)
+	markRawFormat(sprintListCmd)
 
 	sprintActiveCmd.Flags().Int("board", 0, "Board ID (required)")
 	sprintActiveCmd.Flags().Bool("raw", false, "Return raw Jira API response (default: flat JSON)")
 	sprintCmd.AddCommand(sprintActiveCmd)
+	markRawFormat(sprintActiveCmd)
 
 	sprintIssuesCmd.Flags().Int("sprint", 0, "Sprint ID (required)")
 	sprintIssuesCmd.Flags().Bool("raw", false, "Return raw Jira API response (default: flat JSON)")
 	sprintIssuesCmd.Flags().StringSlice("fields", nil, "Output only these fields (flat JSON only)")
 	sprintCmd.AddCommand(sprintIssuesCmd)
+	markRawFormat(sprintIssuesCmd)
 
 	sprintCreateCmd.Flags().Int("board", 0, "Board ID (required)")
 	sprintCreateCmd.Flags().String("name", "", "Sprint name (required)")
@@ -78,9 +81,8 @@ var sprintListCmd = &cobra.Command{
 			return handleAPIError(err, jsonMode)
 		}
 		if jsonMode {
-			raw, _ := cmd.Flags().GetBool("raw")
 			fields, _ := cmd.Flags().GetStringSlice("fields")
-			printSprintsJSON(sprints, raw, fields)
+			printSprintsJSON(sprints, rawOutputRequested(cmd), fields)
 			return nil
 		}
 		if len(sprints) == 0 {
@@ -110,6 +112,10 @@ var sprintActiveCmd = &cobra.Command{
 			return handleAPIError(err, jsonMode)
 		}
 		if len(sprints) == 0 {
+			if jsonMode {
+				output.PrintJSON([]map[string]any{})
+				return nil
+			}
 			output.Info("No active sprint found.")
 			return nil
 		}
@@ -128,8 +134,7 @@ var sprintActiveCmd = &cobra.Command{
 		}
 
 		if jsonMode {
-			raw, _ := cmd.Flags().GetBool("raw")
-			if raw {
+			if rawOutputRequested(cmd) {
 				output.PrintJSON(results)
 			} else {
 				flat := make([]map[string]any, len(results))
@@ -182,9 +187,8 @@ var sprintIssuesCmd = &cobra.Command{
 			return handleAPIError(err, jsonMode)
 		}
 		if jsonMode {
-			raw, _ := cmd.Flags().GetBool("raw")
 			fields, _ := cmd.Flags().GetStringSlice("fields")
-			printIssuesJSON(issues, raw, fields)
+			printIssuesJSON(issues, rawOutputRequested(cmd), fields)
 			return nil
 		}
 		if len(issues) == 0 {
@@ -299,6 +303,10 @@ var sprintCloseCmd = &cobra.Command{
 			return handleAPIError(err, jsonMode)
 		}
 		if sprint.State == "closed" {
+			if jsonMode {
+				output.PrintJSON(map[string]any{"sprintId": sprintID, "state": "closed", "changed": false})
+				return nil
+			}
 			output.Info("Sprint is already closed.")
 			return nil
 		}

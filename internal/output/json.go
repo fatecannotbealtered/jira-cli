@@ -9,9 +9,22 @@ import (
 // jsonMarshalIndent is json.MarshalIndent; overridden in tests for error-path coverage.
 var jsonMarshalIndent = json.MarshalIndent
 
-// PrintJSON outputs v as indented JSON to stdout.
+// jsonMarshal is json.Marshal; overridden in tests for error-path coverage.
+var jsonMarshal = json.Marshal
+
+// CompactJSON controls whether JSON output is compact or indented.
+var CompactJSON bool
+
+func marshalForOutput(v any) ([]byte, error) {
+	if CompactJSON {
+		return jsonMarshal(v)
+	}
+	return jsonMarshalIndent(v, "", "  ")
+}
+
+// PrintJSON outputs v as JSON to stdout.
 func PrintJSON(v any) {
-	data, err := jsonMarshalIndent(v, "", "  ")
+	data, err := marshalForOutput(v)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "json marshal error: %v\n", err)
 		return
@@ -97,7 +110,7 @@ func PrintErrorJSON(msg string, statusCode int) {
 		ErrorCode:  code,
 		Hint:       HintForErrorCode(code),
 	}
-	data, err := jsonMarshalIndent(payload, "", "  ")
+	data, err := marshalForOutput(payload)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, `{"error": %q, "statusCode": %d, "errorCode": %q}`+"\n", msg, statusCode, code)
 		return
@@ -118,7 +131,7 @@ func PrintErrorJSONWithCode(msg string, statusCode int, code ErrorCode) {
 		ErrorCode:  code,
 		Hint:       HintForErrorCode(code),
 	}
-	data, err := jsonMarshalIndent(payload, "", "  ")
+	data, err := marshalForOutput(payload)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, `{"error": %q, "statusCode": %d, "errorCode": %q}`+"\n", msg, statusCode, code)
 		return

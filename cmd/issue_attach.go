@@ -115,6 +115,10 @@ func downloadAttachments(ctx context.Context, client *api.Client, attachments []
 		attachments = filtered
 	}
 	if len(attachments) == 0 {
+		if jsonMode {
+			output.PrintJSON([]savedAttachment{})
+			return nil
+		}
 		output.Info("No attachments.")
 		return nil
 	}

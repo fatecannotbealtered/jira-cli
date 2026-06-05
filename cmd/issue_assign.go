@@ -68,6 +68,10 @@ var issueUnassignCmd = &cobra.Command{
 		if err := client.Issues.Assign(args[0], ""); err != nil {
 			return handleAPIError(err, jsonMode)
 		}
+		if jsonMode {
+			output.PrintJSON(map[string]string{"issueKey": args[0], "assignee": ""})
+			return nil
+		}
 		output.Success(fmt.Sprintf("%s unassigned", args[0]))
 		return nil
 	},

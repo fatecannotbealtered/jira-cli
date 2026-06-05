@@ -49,6 +49,10 @@ var issueTransitionCmd = &cobra.Command{
 			}
 		}
 		if targetTransition == nil {
+			if jsonMode {
+				output.Error(fmt.Sprintf("Status %q not available.", statusName))
+				return SilentErr(ExitBadArgs)
+			}
 			output.Error(fmt.Sprintf("Status %q not available. Available transitions:", statusName))
 			for _, t := range transitions {
 				fmt.Printf("  → %s → %s\n", t.Name, t.To.Name)

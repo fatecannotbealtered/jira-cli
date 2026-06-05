@@ -16,14 +16,14 @@ func runRootExpectSilentClean(t *testing.T, code int, args ...string) (stdout, s
 	t.Helper()
 	resetCmdState(t)
 	resetDomainCmdFlags(t)
-	return runRootExpectSilent(t, code, args...)
+	return runRootExpectSilent(t, code, textFormatUnlessSpecified(args)...)
 }
 
 func runRootOKCleanDomain(t *testing.T, args ...string) (stdout, stderr string) {
 	t.Helper()
 	resetCmdState(t)
 	resetDomainCmdFlags(t)
-	return runRootOK(t, args...)
+	return runRootOK(t, textFormatUnlessSpecified(args)...)
 }
 
 // resetDomainCmdFlags clears subcommand flags that cobra does not reset between runs.
@@ -35,27 +35,27 @@ func resetDomainCmdFlags(t *testing.T) {
 		boardSprintsCmd, projectListCmd, projectVersionsCmd, projectFieldsCmd,
 		filterCreateCmd, filterRunCmd, epicListCmd, epicIssuesCmd, userSearchCmd,
 	} {
-		_ = cmd.Flags().Set("board", "0")
-		_ = cmd.Flags().Set("sprint", "0")
-		_ = cmd.Flags().Set("state", "")
-		_ = cmd.Flags().Set("raw", "false")
-		_ = cmd.Flags().Set("fields", "")
-		_ = cmd.Flags().Set("name", "")
-		_ = cmd.Flags().Set("jql", "")
-		_ = cmd.Flags().Set("description", "")
-		_ = cmd.Flags().Set("issues", "")
-		_ = cmd.Flags().Set("start-date", "")
-		_ = cmd.Flags().Set("end-date", "")
-		_ = cmd.Flags().Set("goal", "")
-		_ = cmd.Flags().Set("project", "")
-		_ = cmd.Flags().Set("type", "")
-		_ = cmd.Flags().Set("limit", "50")
-		_ = cmd.Flags().Set("done", "false")
-		_ = cmd.Flags().Set("released", "false")
-		_ = cmd.Flags().Set("unreleased", "false")
-		_ = cmd.Flags().Set("custom", "false")
-		_ = cmd.Flags().Set("query", "")
-		_ = cmd.Flags().Set("assignable", "false")
+		resetFlagValue(cmd.Flags(), "board", "0")
+		resetFlagValue(cmd.Flags(), "sprint", "0")
+		resetFlagValue(cmd.Flags(), "state", "")
+		resetFlagValue(cmd.Flags(), "raw", "false")
+		resetFlagValue(cmd.Flags(), "fields", "")
+		resetFlagValue(cmd.Flags(), "name", "")
+		resetFlagValue(cmd.Flags(), "jql", "")
+		resetFlagValue(cmd.Flags(), "description", "")
+		resetFlagValue(cmd.Flags(), "issues", "")
+		resetFlagValue(cmd.Flags(), "start-date", "")
+		resetFlagValue(cmd.Flags(), "end-date", "")
+		resetFlagValue(cmd.Flags(), "goal", "")
+		resetFlagValue(cmd.Flags(), "project", "")
+		resetFlagValue(cmd.Flags(), "type", "")
+		resetFlagValue(cmd.Flags(), "limit", "50")
+		resetFlagValue(cmd.Flags(), "done", "false")
+		resetFlagValue(cmd.Flags(), "released", "false")
+		resetFlagValue(cmd.Flags(), "unreleased", "false")
+		resetFlagValue(cmd.Flags(), "custom", "false")
+		resetFlagValue(cmd.Flags(), "query", "")
+		resetFlagValue(cmd.Flags(), "assignable", "false")
 	}
 }
 
