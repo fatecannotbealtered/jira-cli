@@ -8,7 +8,13 @@ const ext = process.platform === "win32" ? ".exe" : "";
 const bin = path.join(__dirname, "..", "bin", "jira-cli" + ext);
 
 try {
-  execFileSync(bin, process.argv.slice(2), { stdio: "inherit" });
+  execFileSync(bin, process.argv.slice(2), {
+    stdio: "inherit",
+    env: {
+      ...process.env,
+      JIRA_CLI_INSTALL_METHOD: process.env.JIRA_CLI_INSTALL_METHOD || "npm",
+    },
+  });
 } catch (e) {
   if (e.code === "ENOENT") {
     console.error("Binary not found. Run 'npm install -g @fatecannotbealtered-/jira-cli' to reinstall.");

@@ -23,6 +23,21 @@ jira-cli doctor --json
 
 Optional: `jira-cli install-skill` → `~/.openclaw/skills`.
 
+## Updating
+
+```bash
+jira-cli update --check --json       # Check the latest GitHub Release
+jira-cli update                      # Update a standalone binary after checksum verification
+```
+
+If the CLI was installed through npm, prefer the package manager instead of in-place replacement:
+
+```bash
+npm install -g @fatecannotbealtered-/jira-cli@latest
+```
+
+Use `--dry-run` to preview. Use `--force` only when the user explicitly wants in-place binary replacement.
+
 ## Prerequisites
 
 Before using any command, authenticate with a Jira DC instance. Follow these steps in order:
@@ -252,7 +267,7 @@ jira-cli sprint move --sprint 11 --issues PROJ-200,PROJ-201,PROJ-202
 - `--json` — Output as JSON (machine-readable, flat format by default)
 - `--force` — Skip interactive confirmation prompts (for CI/Agent automation)
 - `--quiet` — Suppress non-JSON stdout output (ideal for scripts and AI Agents)
-- `--dry-run` — Show what would be done without executing (write commands only)
+- `--dry-run` — Show what would be done without executing (supported by write/update commands)
 
 ## Output Control Flags
 

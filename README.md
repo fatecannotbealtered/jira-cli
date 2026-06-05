@@ -11,7 +11,7 @@ Full-featured Jira Data Center CLI for humans and AI Agents. Manage issues, spri
 
 Built with Go. Single static binary (small dependency footprint via `go.mod`). No separate runtime to install.
 
-[Installation](#installation) · [Authentication](#authentication) · [Commands](#commands) · [JSON Output](#json-output) · [Security](#security) · [Contributing](#contributing) · [Disclaimer](#disclaimer)
+[Installation](#installation) · [Updating](#updating) · [Authentication](#authentication) · [Commands](#commands) · [JSON Output](#json-output) · [Security](#security) · [Contributing](#contributing) · [Disclaimer](#disclaimer)
 
 ## Disclaimer
 
@@ -28,6 +28,7 @@ This project is shared for **personal learning, research, and everyday productiv
 | 🌈 **Beautiful Output** | Colored tables with CJK character support |
 | 🔍 **Powerful Search** | Full JQL support with auto-pagination |
 | 🔧 **Custom Fields** | Set custom fields during create and edit |
+| ⬆️ **Safe Update** | Built-in release checks, checksum verification, package-manager guardrails |
 | 🔐 **PAT Auth** | Bearer token authentication (Personal Access Token) |
 | 🌐 **Env Vars** | `JIRA_HOST` and `JIRA_TOKEN` override config file for CI/Agent use |
 | 📋 **Audit Log** | Automatic JSONL audit trail for all write commands with auto-rotation |
@@ -62,6 +63,22 @@ go install github.com/fatecannotbealtered/jira-cli/cmd/jira-cli@latest
 ### Alternative: Download binary
 
 Download from [GitHub Releases](https://github.com/fatecannotbealtered/jira-cli/releases) and add to your PATH.
+
+## Updating
+
+```bash
+jira-cli update --check --json       # check latest GitHub Release
+jira-cli update                      # update a standalone binary
+jira-cli update --version v1.2.3     # install a specific release
+```
+
+`jira-cli update` verifies `checksums.txt` before replacing the current binary. If the CLI was installed through npm, the command will recommend the package-manager path instead:
+
+```bash
+npm install -g @fatecannotbealtered-/jira-cli@latest
+```
+
+Use `--dry-run` to preview and `--force` only when intentionally replacing the binary in place.
 
 ## Authentication
 
@@ -289,7 +306,7 @@ Credentials stored at `~/.jira-cli/config.json` (permissions: 0600):
 | `--json` | Output as JSON (flat format by default; use `--raw` for full Jira response) |
 | `--force` | Skip interactive confirmation prompts |
 | `--quiet` | Suppress non-JSON stdout output (for scripts and AI Agents) |
-| `--dry-run` | Show what would be done without executing (write commands only) |
+| `--dry-run` | Show what would be done without executing (supported by write/update commands) |
 
 ### Per-command flags
 
@@ -404,6 +421,7 @@ jira-cli/
 │   ├── issue_*.go           # Issue sub-commands
 │   ├── flatten.go           # Flat JSON output helpers (issues, sprints)
 │   ├── reference.go         # Self-documenting command reference
+│   ├── update.go            # GitHub Release self-update
 │   ├── sprint.go            # Sprint management
 │   ├── board.go             # Board operations
 │   ├── project.go           # Project management

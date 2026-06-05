@@ -11,7 +11,7 @@
 
 Go 构建，标准库与少量固定依赖，单文件二进制。
 
-[安装](#安装) · [认证](#认证) · [命令](#命令) · [JSON 输出](#json-输出) · [安全](#安全) · [贡献](#贡献) · [使用说明](#使用说明)
+[安装](#安装) · [更新](#更新) · [认证](#认证) · [命令](#命令) · [JSON 输出](#json-输出) · [安全](#安全) · [贡献](#贡献) · [使用说明](#使用说明)
 
 ## 使用说明
 
@@ -28,6 +28,7 @@ Go 构建，标准库与少量固定依赖，单文件二进制。
 | 🌈 **美观输出** | 彩色表格，支持中日韩字符宽度 |
 | 🔍 **强大搜索** | 完整 JQL 支持，自动翻页 |
 | 🔧 **自定义字段** | 支持创建和编辑时设置自定义字段 |
+| ⬆️ **安全更新** | 内置 Release 检查、checksum 校验和包管理器保护 |
 | 🔐 **PAT 认证** | Bearer Token 认证（Personal Access Token） |
 | 🌐 **环境变量** | `JIRA_HOST` 和 `JIRA_TOKEN` 覆盖配置文件，适合 CI/Agent |
 | 📋 **审计日志** | 所有写操作自动记录 JSONL 审计日志，按月轮转，自动清理 |
@@ -61,6 +62,22 @@ go install github.com/fatecannotbealtered/jira-cli/cmd/jira-cli@latest
 ```
 
 或从 [GitHub Releases](https://github.com/fatecannotbealtered/jira-cli/releases) 下载二进制文件并添加到 PATH。
+
+## 更新
+
+```bash
+jira-cli update --check --json       # 检查最新 GitHub Release
+jira-cli update                      # 更新独立二进制
+jira-cli update --version v1.2.3     # 安装指定版本
+```
+
+`jira-cli update` 会先校验 `checksums.txt`，再替换当前二进制。如果 CLI 通过 npm 安装，命令会优先提示使用包管理器升级：
+
+```bash
+npm install -g @fatecannotbealtered-/jira-cli@latest
+```
+
+使用 `--dry-run` 预览操作；只有在明确需要原地替换二进制时才使用 `--force`。
 
 ## 认证
 
@@ -274,7 +291,7 @@ jira-cli doctor --json | jq '.authValid'   # 必须为 true
 | `--json` | 以 JSON 格式输出（默认扁平格式；用 `--raw` 获取完整 Jira 响应） |
 | `--force` | 跳过交互式确认提示 |
 | `--quiet` | 抑制非 JSON 标准输出（适用于脚本和 AI Agent） |
-| `--dry-run` | 显示将要执行的操作但不实际执行（仅写命令） |
+| `--dry-run` | 显示将要执行的操作但不实际执行（写命令和 update 支持） |
 
 ### 命令级标志
 
@@ -398,6 +415,7 @@ jira-cli/
 │   ├── issue_*.go           # Issue 子命令
 │   ├── flatten.go           # 扁平 JSON 输出助手（Issue、Sprint）
 │   ├── reference.go         # 自描述命令参考
+│   ├── update.go            # GitHub Release 自更新
 │   ├── sprint.go            # Sprint 管理
 │   ├── board.go             # Board 操作
 │   ├── project.go           # 项目管理
