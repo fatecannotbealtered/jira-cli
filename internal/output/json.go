@@ -191,7 +191,7 @@ func PrintErrorJSONWithCode(msg string, statusCode int, code ErrorCode) {
 	}
 	data, err := marshalForOutput(payload)
 	if err != nil {
-		fmt.Fprintf(os.Stdout, `{"ok":false,"schema_version":%q,"error":{"code":%q,"message":%q,"retryable":%v}}`+"\n",
+		_, _ = fmt.Fprintf(os.Stdout, `{"ok":false,"schema_version":%q,"error":{"code":%q,"message":%q,"retryable":%v}}`+"\n",
 			SchemaVersion, code, msg, RetryableForErrorCode(code))
 		return
 	}
