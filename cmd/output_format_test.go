@@ -16,9 +16,7 @@ func TestOutputFormat_DefaultJSONWithoutFlag(t *testing.T) {
 	stdout, _ := runRootOKClean(t, "search", "project = P")
 
 	var result map[string]any
-	if err := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &result); err != nil {
-		t.Fatalf("invalid JSON: %v\n%s", err, stdout)
-	}
+	decodeJSONOutput(t, stdout, &result)
 	if result["total"].(float64) != 2 {
 		t.Fatalf("total=%v", result["total"])
 	}
@@ -59,9 +57,7 @@ func TestOutputFormat_CompactJSON(t *testing.T) {
 		t.Fatalf("expected compact JSON, got: %s", stdout)
 	}
 	var result map[string]any
-	if err := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &result); err != nil {
-		t.Fatalf("invalid compact JSON: %v\n%s", err, stdout)
-	}
+	decodeJSONOutput(t, stdout, &result)
 }
 
 func TestOutputFormat_QuietDoesNotSuppressMachineResults(t *testing.T) {
@@ -75,9 +71,7 @@ func TestOutputFormat_QuietDoesNotSuppressMachineResults(t *testing.T) {
 			t.Fatalf("%s result was suppressed by --quiet", name)
 		}
 		var result map[string]any
-		if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &result); err != nil {
-			t.Fatalf("%s output is not JSON: %v\n%s", name, err, out)
-		}
+		decodeJSONOutput(t, out, &result)
 	}
 }
 
@@ -117,14 +111,15 @@ func TestOutputFormat_CobraArgErrorDefaultJSON(t *testing.T) {
 	if LastExitCode() != ExitBadArgs {
 		t.Fatalf("exit=%d, want %d", LastExitCode(), ExitBadArgs)
 	}
-	if strings.TrimSpace(stdout) != "" {
-		t.Fatalf("stdout should be empty for argument error, got %q", stdout)
-	}
 	var payload map[string]any
-	if err := json.Unmarshal([]byte(strings.TrimSpace(stderr)), &payload); err != nil {
-		t.Fatalf("stderr is not JSON: %v\n%s", err, stderr)
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("stderr should be empty for JSON argument error, got %q", stderr)
 	}
-	if payload["errorCode"] != string(output.ErrValidation) {
+	if err := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &payload); err != nil {
+		t.Fatalf("stdout is not JSON: %v\n%s", err, stdout)
+	}
+	errPayload := payload["error"].(map[string]any)
+	if errPayload["code"] != string(output.ErrValidation) {
 		t.Fatalf("payload=%v", payload)
 	}
 }
@@ -143,16 +138,19 @@ func TestOutputFormat_CobraArgErrorText(t *testing.T) {
 }
 
 func TestOutputFormat_CompactCobraArgError(t *testing.T) {
-	_, stderr, err := runRootClean(t, "--compact", "issue", "get")
+	stdout, stderr, err := runRootClean(t, "--compact", "issue", "get")
 	if !errors.Is(err, ErrSilent) {
 		t.Fatalf("expected ErrSilent, got %v", err)
 	}
-	if strings.Contains(stderr, "\n  ") {
-		t.Fatalf("expected compact JSON error, got %q", stderr)
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("stderr should be empty for JSON argument error, got %q", stderr)
+	}
+	if strings.Contains(stdout, "\n  ") {
+		t.Fatalf("expected compact JSON error, got %q", stdout)
 	}
 	var payload map[string]any
-	if err := json.Unmarshal([]byte(strings.TrimSpace(stderr)), &payload); err != nil {
-		t.Fatalf("stderr is not JSON: %v\n%s", err, stderr)
+	if err := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &payload); err != nil {
+		t.Fatalf("stdout is not JSON: %v\n%s", err, stdout)
 	}
 }
 
@@ -213,12 +211,12 @@ func TestOutputFormat_DefaultJSONNonzeroPathsStayStructured(t *testing.T) {
 		if !errors.Is(err, ErrSilent) || LastExitCode() != ExitBadArgs {
 			t.Fatalf("err=%v exit=%d", err, LastExitCode())
 		}
-		if strings.TrimSpace(stdout) != "" {
-			t.Fatalf("stdout should be empty, got %q", stdout)
+		if strings.TrimSpace(stderr) != "" {
+			t.Fatalf("stderr should be empty, got %q", stderr)
 		}
 		var payload map[string]any
-		decodeJSONOutput(t, stderr, &payload)
-		if payload["errorCode"] != string(output.ErrValidation) {
+		decodeJSONOutput(t, stdout, &payload)
+		if payload["code"] != string(output.ErrValidation) {
 			t.Fatalf("payload=%v", payload)
 		}
 	})
@@ -227,15 +225,15 @@ func TestOutputFormat_DefaultJSONNonzeroPathsStayStructured(t *testing.T) {
 		setupMockJira(t, issueMockHandler(t))
 		resetCLIState(t)
 		stdout, stderr, err := runRootWithStdin(t, "WRONG\n", "issue", "delete", sampleIssueKey)
-		if !errors.Is(err, ErrSilent) || LastExitCode() != ExitBadArgs {
+		if !errors.Is(err, ErrSilent) || LastExitCode() != ExitConfirmRequired {
 			t.Fatalf("err=%v exit=%d", err, LastExitCode())
 		}
-		if strings.TrimSpace(stdout) != "" {
-			t.Fatalf("stdout should be empty, got %q", stdout)
+		if strings.TrimSpace(stderr) != "" {
+			t.Fatalf("stderr should be empty, got %q", stderr)
 		}
 		var payload map[string]any
-		decodeJSONSuffix(t, stderr, &payload)
-		if payload["errorCode"] != string(output.ErrValidation) {
+		decodeJSONOutput(t, stdout, &payload)
+		if payload["code"] != string(output.ErrConfirmRequired) {
 			t.Fatalf("payload=%v", payload)
 		}
 	})
@@ -255,18 +253,26 @@ func runRootDefaultJSON(t *testing.T, args ...string) (stdout, stderr string, er
 
 func decodeJSONOutput(t *testing.T, out string, v any) {
 	t.Helper()
-	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), v); err != nil {
+	trimmed := strings.TrimSpace(out)
+	var env struct {
+		Data  json.RawMessage `json:"data"`
+		Error json.RawMessage `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(trimmed), &env); err != nil {
 		t.Fatalf("invalid JSON: %v\n%s", err, out)
 	}
-}
-
-func decodeJSONSuffix(t *testing.T, out string, v any) {
-	t.Helper()
-	idx := strings.Index(out, "{")
-	if idx < 0 {
-		t.Fatalf("no JSON object in output: %q", out)
-	}
-	if err := json.Unmarshal([]byte(strings.TrimSpace(out[idx:])), v); err != nil {
-		t.Fatalf("invalid JSON suffix: %v\n%s", err, out)
+	switch {
+	case len(env.Data) > 0:
+		if err := json.Unmarshal(env.Data, v); err != nil {
+			t.Fatalf("invalid JSON data: %v\n%s", err, out)
+		}
+	case len(env.Error) > 0:
+		if err := json.Unmarshal(env.Error, v); err != nil {
+			t.Fatalf("invalid JSON error: %v\n%s", err, out)
+		}
+	default:
+		if err := json.Unmarshal([]byte(trimmed), v); err != nil {
+			t.Fatalf("invalid JSON: %v\n%s", err, out)
+		}
 	}
 }

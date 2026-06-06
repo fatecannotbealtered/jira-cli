@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"time"
 )
+
+const SchemaVersion = "1.0"
 
 // jsonMarshalIndent is json.MarshalIndent; overridden in tests for error-path coverage.
 var jsonMarshalIndent = json.MarshalIndent
@@ -15,6 +18,28 @@ var jsonMarshal = json.Marshal
 // CompactJSON controls whether JSON output is compact or indented.
 var CompactJSON bool
 
+// EnvelopeJSON controls whether success payloads are wrapped in the agent envelope.
+// Raw format disables this while keeping JSON error envelopes.
+var EnvelopeJSON = true
+
+// CommandStartTime is set by the CLI root command for duration metadata.
+var CommandStartTime time.Time
+
+type Envelope struct {
+	OK            bool             `json:"ok"`
+	SchemaVersion string           `json:"schema_version"`
+	Data          any              `json:"data,omitempty"`
+	Error         *EnvelopeError   `json:"error,omitempty"`
+	Meta          map[string]int64 `json:"meta,omitempty"`
+}
+
+type EnvelopeError struct {
+	Code      ErrorCode      `json:"code"`
+	Message   string         `json:"message"`
+	Details   map[string]any `json:"details,omitempty"`
+	Retryable bool           `json:"retryable"`
+}
+
 func marshalForOutput(v any) ([]byte, error) {
 	if CompactJSON {
 		return jsonMarshal(v)
@@ -22,11 +47,31 @@ func marshalForOutput(v any) ([]byte, error) {
 	return jsonMarshalIndent(v, "", "  ")
 }
 
+func durationMeta() map[string]int64 {
+	duration := int64(0)
+	if !CommandStartTime.IsZero() {
+		duration = time.Since(CommandStartTime).Milliseconds()
+	}
+	return map[string]int64{"duration_ms": duration}
+}
+
+func successEnvelope(v any) Envelope {
+	return Envelope{
+		OK:            true,
+		SchemaVersion: SchemaVersion,
+		Data:          v,
+		Meta:          durationMeta(),
+	}
+}
+
 // PrintJSON outputs v as JSON to stdout.
 func PrintJSON(v any) {
+	if EnvelopeJSON {
+		v = successEnvelope(v)
+	}
 	data, err := marshalForOutput(v)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "json marshal error: %v\n", err)
+		PrintErrorJSONWithCode("json marshal error: "+err.Error(), 0, ErrUnknown)
 		return
 	}
 	fmt.Println(string(data))
@@ -36,20 +81,25 @@ func PrintJSON(v any) {
 type ErrorCode string
 
 const (
-	ErrConfig     ErrorCode = "CONFIG_ERROR"
-	ErrAuth       ErrorCode = "AUTH_REQUIRED"
-	ErrForbidden  ErrorCode = "FORBIDDEN"
-	ErrNotFound   ErrorCode = "NOT_FOUND"
-	ErrRateLimit  ErrorCode = "RATE_LIMITED"
-	ErrServer     ErrorCode = "SERVER_ERROR"
-	ErrValidation ErrorCode = "VALIDATION_ERROR"
-	ErrNetwork    ErrorCode = "NETWORK_ERROR"
-	ErrUnknown    ErrorCode = "UNKNOWN_ERROR"
+	ErrConfig          ErrorCode = "E_CONFIG"
+	ErrAuth            ErrorCode = "E_AUTH_REQUIRED"
+	ErrForbidden       ErrorCode = "E_FORBIDDEN"
+	ErrNotFound        ErrorCode = "E_NOT_FOUND"
+	ErrRateLimit       ErrorCode = "E_RATE_LIMITED"
+	ErrServer          ErrorCode = "E_SERVER"
+	ErrValidation      ErrorCode = "E_VALIDATION"
+	ErrNetwork         ErrorCode = "E_NETWORK"
+	ErrConfirmRequired ErrorCode = "E_CONFIRM_REQUIRED"
+	ErrConflict        ErrorCode = "E_CONFLICT"
+	ErrTimeout         ErrorCode = "E_TIMEOUT"
+	ErrUnknown         ErrorCode = "E_UNKNOWN"
 )
 
 // ErrorCodeFromStatus maps HTTP status codes to error codes.
 func ErrorCodeFromStatus(statusCode int) ErrorCode {
 	switch statusCode {
+	case 408:
+		return ErrTimeout
 	case 401:
 		return ErrAuth
 	case 403:
@@ -66,6 +116,15 @@ func ErrorCodeFromStatus(statusCode int) ErrorCode {
 			return ErrValidation
 		}
 		return ErrUnknown
+	}
+}
+
+func RetryableForErrorCode(code ErrorCode) bool {
+	switch code {
+	case ErrRateLimit, ErrServer, ErrNetwork, ErrTimeout:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -88,53 +147,53 @@ func HintForErrorCode(code ErrorCode) string {
 		return "Check command arguments and flags"
 	case ErrNetwork:
 		return "Check host URL and network connectivity"
+	case ErrConfirmRequired:
+		return "Run the same write command with --dry-run, then retry with --confirm <token>"
+	case ErrConflict:
+		return "Re-run --dry-run and retry with the new confirm token"
+	case ErrTimeout:
+		return "Retry with backoff; increase timeout if the command supports it"
 	default:
 		return ""
 	}
 }
 
-// PrintErrorJSON outputs an error message as JSON to stderr.
+// PrintErrorJSON outputs an error envelope as JSON to stdout.
 func PrintErrorJSON(msg string, statusCode int) {
 	code := ErrorCodeFromStatus(statusCode)
 	if statusCode == 0 {
 		code = ErrUnknown
 	}
-	payload := struct {
-		Error      string    `json:"error"`
-		StatusCode int       `json:"statusCode"`
-		ErrorCode  ErrorCode `json:"errorCode"`
-		Hint       string    `json:"hint,omitempty"`
-	}{
-		Error:      msg,
-		StatusCode: statusCode,
-		ErrorCode:  code,
-		Hint:       HintForErrorCode(code),
-	}
-	data, err := marshalForOutput(payload)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, `{"error": %q, "statusCode": %d, "errorCode": %q}`+"\n", msg, statusCode, code)
-		return
-	}
-	fmt.Fprintln(os.Stderr, string(data))
+	PrintErrorJSONWithCode(msg, statusCode, code)
 }
 
-// PrintErrorJSONWithCode outputs an error with an explicit error code.
+// PrintErrorJSONWithCode outputs an error envelope with an explicit error code.
 func PrintErrorJSONWithCode(msg string, statusCode int, code ErrorCode) {
-	payload := struct {
-		Error      string    `json:"error"`
-		StatusCode int       `json:"statusCode"`
-		ErrorCode  ErrorCode `json:"errorCode"`
-		Hint       string    `json:"hint,omitempty"`
-	}{
-		Error:      msg,
-		StatusCode: statusCode,
-		ErrorCode:  code,
-		Hint:       HintForErrorCode(code),
+	details := map[string]any{}
+	if statusCode != 0 {
+		details["status_code"] = statusCode
+	}
+	if hint := HintForErrorCode(code); hint != "" {
+		details["hint"] = hint
+	}
+	if len(details) == 0 {
+		details = nil
+	}
+	payload := Envelope{
+		OK:            false,
+		SchemaVersion: SchemaVersion,
+		Error: &EnvelopeError{
+			Code:      code,
+			Message:   msg,
+			Details:   details,
+			Retryable: RetryableForErrorCode(code),
+		},
 	}
 	data, err := marshalForOutput(payload)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, `{"error": %q, "statusCode": %d, "errorCode": %q}`+"\n", msg, statusCode, code)
+		fmt.Fprintf(os.Stdout, `{"ok":false,"schema_version":%q,"error":{"code":%q,"message":%q,"retryable":%v}}`+"\n",
+			SchemaVersion, code, msg, RetryableForErrorCode(code))
 		return
 	}
-	fmt.Fprintln(os.Stderr, string(data))
+	fmt.Println(string(data))
 }

@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -97,9 +96,7 @@ func TestUpdateCheckJSON(t *testing.T) {
 
 	stdout, _ := runRootOK(t, "--json", "update", "--check")
 	var result updateResult
-	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
-		t.Fatalf("invalid JSON: %v\n%s", err, stdout)
-	}
+	decodeEnvelopeData(t, stdout, &result)
 	if !result.UpdateAvailable || result.CurrentVersion != "1.0.0" || result.LatestVersion != "1.2.3" {
 		t.Fatalf("result=%+v", result)
 	}
@@ -152,9 +149,7 @@ func TestUpdateInstallsRelease(t *testing.T) {
 		t.Fatalf("binary=%q, want %q", got, want)
 	}
 	var result updateResult
-	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
-		t.Fatalf("invalid JSON: %v\n%s", err, stdout)
-	}
+	decodeEnvelopeData(t, stdout, &result)
 	if !result.Installed || !result.ChecksumVerified || result.LatestVersion != "1.2.3" {
 		t.Fatalf("result=%+v", result)
 	}
@@ -181,10 +176,7 @@ func TestUpdateDryRunDoesNotInstall(t *testing.T) {
 	if string(got) != "old-binary" {
 		t.Fatalf("dry-run changed binary to %q", got)
 	}
-	var result updateResult
-	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
-		t.Fatalf("invalid JSON: %v\n%s", err, stdout)
-	}
+	result := decodeUpdateDryRunResult(t, stdout)
 	if !result.DryRun || result.Installed {
 		t.Fatalf("result=%+v", result)
 	}
@@ -212,13 +204,25 @@ func TestUpdateSpecificVersionCanDryRunDowngrade(t *testing.T) {
 	if string(got) != "current-binary" {
 		t.Fatalf("dry-run changed binary to %q", got)
 	}
-	var result updateResult
-	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
-		t.Fatalf("invalid JSON: %v\n%s", err, stdout)
-	}
+	result := decodeUpdateDryRunResult(t, stdout)
 	if !result.DryRun || result.UpdateAvailable || result.RequestedVersion != "1.2.3" {
 		t.Fatalf("result=%+v", result)
 	}
+}
+
+func decodeUpdateDryRunResult(t *testing.T, stdout string) updateResult {
+	t.Helper()
+	var data struct {
+		Preview struct {
+			Result updateResult `json:"result"`
+		} `json:"preview"`
+		ConfirmToken string `json:"confirm_token"`
+	}
+	decodeEnvelopeData(t, stdout, &data)
+	if data.ConfirmToken == "" {
+		t.Fatalf("missing confirm_token in %s", stdout)
+	}
+	return data.Preview.Result
 }
 
 func TestUpdatePlatformWindowsARM64Fallback(t *testing.T) {

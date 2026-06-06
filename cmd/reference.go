@@ -67,9 +67,10 @@ type commandReference struct {
 }
 
 type referenceDocument struct {
-	Version  string             `json:"version"`
-	Root     commandReference   `json:"root"`
-	Commands []commandReference `json:"commands"`
+	SchemaVersion string             `json:"schema_version"`
+	Version       string             `json:"version"`
+	Root          commandReference   `json:"root"`
+	Commands      []commandReference `json:"commands"`
 }
 
 var referenceCmd = &cobra.Command{
@@ -109,9 +110,10 @@ func buildReferenceDocument(root *cobra.Command) referenceDocument {
 	var commands []commandReference
 	rootRef := buildCommandReference(root, "", &commands)
 	return referenceDocument{
-		Version:  root.Version,
-		Root:     rootRef,
-		Commands: commands,
+		SchemaVersion: output.SchemaVersion,
+		Version:       root.Version,
+		Root:          rootRef,
+		Commands:      commands,
 	}
 }
 

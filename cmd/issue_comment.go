@@ -43,7 +43,7 @@ var commentAddCmd = &cobra.Command{
 			output.Error("--body cannot be empty")
 			return SilentErr(ExitBadArgs)
 		}
-		if dryRunOutput("add comment", map[string]any{"key": args[0]}) {
+		if dryRunOutput("add comment", map[string]any{"key": args[0], "body": body}) {
 			return nil
 		}
 		comment, err := client.Issues.AddComment(args[0], body)

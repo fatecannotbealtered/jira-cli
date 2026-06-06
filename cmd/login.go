@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"bufio"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"strings"
@@ -46,6 +48,8 @@ func init() {
 	rootCmd.AddCommand(logoutCmd)
 	loginCmd.Flags().StringVar(&loginHostFlag, "host", "", "Jira host URL (e.g. https://jira.company.com)")
 	loginCmd.Flags().StringVar(&loginTokenFlag, "token", "", "Personal Access Token (PAT)")
+	markWrite(loginCmd)
+	markWrite(logoutCmd)
 }
 
 func runLogin(_ *cobra.Command, _ []string) error {
@@ -60,6 +64,10 @@ func runLogin(_ *cobra.Command, _ []string) error {
 		if token == "" {
 			output.Error("token cannot be empty")
 			return SilentErr(ExitBadArgs)
+		}
+		loginDetail := map[string]any{"host": host, "token_sha256": sha256Hex(token)}
+		if dryRunOutput("login", loginDetail) {
+			return nil
 		}
 
 		cfg := &config.Config{Host: host, Token: token}
@@ -89,14 +97,16 @@ func runLogin(_ *cobra.Command, _ []string) error {
 	}
 
 	// Interactive mode
+	if jsonMode {
+		output.Error("login requires --host and --token in json format; use --format text for interactive login")
+		return SilentErr(ExitBadArgs)
+	}
 	reader := bufio.NewReader(os.Stdin)
 
-	if !jsonMode {
-		fmt.Println()
-		output.Bold("  jira-cli Login (Data Center)")
-		output.Gray("  ────────────────────────────────────────")
-		fmt.Println()
-	}
+	fmt.Println()
+	output.Bold("  jira-cli Login (Data Center)")
+	output.Gray("  ────────────────────────────────────────")
+	fmt.Println()
 
 	host := loginHostFlag
 	if host == "" {
@@ -173,6 +183,9 @@ func loginPrompt(msg string) {
 }
 
 func runLogout(_ *cobra.Command, _ []string) error {
+	if dryRunOutput("logout", map[string]any{"config_file": config.FilePath()}) {
+		return nil
+	}
 	if err := config.Delete(); err != nil {
 		output.Error("failed to remove config: " + err.Error())
 		return SilentErr(ExitAuth)
@@ -183,4 +196,9 @@ func runLogout(_ *cobra.Command, _ []string) error {
 	}
 	output.Success("Logged out. Config removed.")
 	return nil
+}
+
+func sha256Hex(s string) string {
+	sum := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(sum[:])
 }

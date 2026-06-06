@@ -40,7 +40,7 @@ var worklogAddCmd = &cobra.Command{
 		started, _ := cmd.Flags().GetString("started")
 		comment, _ := cmd.Flags().GetString("comment")
 
-		if dryRunOutput("add worklog", map[string]any{"key": args[0], "time": timeStr}) {
+		if dryRunOutput("add worklog", map[string]any{"key": args[0], "time": timeStr, "started": started, "comment": comment}) {
 			return nil
 		}
 		worklog, err := client.Issues.AddWorklog(args[0], timeStr, started, comment)

@@ -54,7 +54,7 @@ func Success(msg string) {
 	fmt.Println(colorize(ansiGreen, "✔ "+msg))
 }
 
-// Error prints a red cross message to stderr.
+// Error prints a human-readable error to stderr, or a JSON error envelope to stdout.
 func Error(msg string) {
 	if ErrorJSON {
 		PrintErrorJSONWithCode(msg, 0, ErrValidation)

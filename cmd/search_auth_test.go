@@ -43,10 +43,12 @@ func resetCmdState(t *testing.T) {
 	quietMode = false
 	dryRun = false
 	forceMode = false
+	confirmToken = ""
 	loginHostFlag = ""
 	loginTokenFlag = ""
 	output.CompactJSON = false
 	output.ErrorJSON = false
+	output.EnvelopeJSON = true
 	output.Quiet = false
 	resetFlagValue(rootCmd.PersistentFlags(), "format", outputFormatJSON)
 	resetFlagValue(rootCmd.PersistentFlags(), "json", "false")
@@ -54,6 +56,7 @@ func resetCmdState(t *testing.T) {
 	resetFlagValue(rootCmd.PersistentFlags(), "quiet", "false")
 	resetFlagValue(rootCmd.PersistentFlags(), "dry-run", "false")
 	resetFlagValue(rootCmd.PersistentFlags(), "force", "false")
+	resetFlagValue(rootCmd.PersistentFlags(), "confirm", "")
 	resetFlagValue(searchCmd.Flags(), "limit", "50")
 	resetFlagValue(searchCmd.Flags(), "fields", "")
 	resetFlagValue(searchCmd.Flags(), "order-by", "")
@@ -268,9 +271,7 @@ func TestSearch_DefaultJSONFlat(t *testing.T) {
 	setupMockJira(t, jiraSearchHandler(t, nil))
 	stdout, _ := runRootOKClean(t, "--json", "search", "project = P")
 	var result map[string]any
-	if err := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &result); err != nil {
-		t.Fatalf("invalid JSON: %v", err)
-	}
+	decodeEnvelopeData(t, stdout, &result)
 	if result["total"].(float64) != 2 {
 		t.Fatalf("total=%v", result["total"])
 	}
@@ -288,9 +289,7 @@ func TestSearch_DefaultJSONRaw(t *testing.T) {
 	setupMockJira(t, jiraSearchHandler(t, nil))
 	stdout, _ := runRootOKClean(t, "--json", "search", "project = P", "--raw")
 	var result map[string]any
-	if err := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &result); err != nil {
-		t.Fatalf("invalid JSON: %v", err)
-	}
+	decodeEnvelopeData(t, stdout, &result)
 	issues := result["issues"].([]any)
 	first := issues[0].(map[string]any)
 	if _, ok := first["fields"]; !ok {
@@ -353,9 +352,7 @@ func TestSearch_CountPlainAndJSON(t *testing.T) {
 
 	stdout, _ = runRootOKClean(t, "--json", "search", "project = P", "--count")
 	var result map[string]int
-	if err := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &result); err != nil {
-		t.Fatalf("invalid JSON: %v", err)
-	}
+	decodeEnvelopeData(t, stdout, &result)
 	if result["total"] != 42 {
 		t.Fatalf("total=%d", result["total"])
 	}
@@ -388,18 +385,14 @@ func TestSearch_AllPlainAndJSON(t *testing.T) {
 
 	stdout, _ = runRootOKClean(t, "--json", "search", "--all", "project = P", "--raw")
 	var rawResult map[string]any
-	if err := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &rawResult); err != nil {
-		t.Fatalf("invalid JSON: %v", err)
-	}
+	decodeEnvelopeData(t, stdout, &rawResult)
 	if rawResult["total"].(float64) != 2 {
 		t.Fatalf("total=%v", rawResult["total"])
 	}
 
 	stdout, _ = runRootOKClean(t, "--json", "search", "--all", "project = P")
 	var flatResult map[string]any
-	if err := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &flatResult); err != nil {
-		t.Fatalf("invalid JSON: %v", err)
-	}
+	decodeEnvelopeData(t, stdout, &flatResult)
 	issues := flatResult["issues"].([]any)
 	first := issues[0].(map[string]any)
 	if _, ok := first["summary"]; !ok {
@@ -474,10 +467,8 @@ func TestDoctor_ConfigLoadErrorJSON(t *testing.T) {
 		t.Fatalf("err=%v exit=%d", err, LastExitCode())
 	}
 	var result map[string]any
-	if err := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &result); err != nil {
-		t.Fatalf("invalid JSON: %v", err)
-	}
-	if result["error"] == nil || result["error"] == "" {
+	decodeEnvelopeData(t, stdout, &result)
+	if len(result["checks"].([]any)) == 0 {
 		t.Fatalf("result=%v", result)
 	}
 }
@@ -502,11 +493,11 @@ func TestDoctor_NotConfiguredJSON(t *testing.T) {
 		t.Fatalf("err=%v exit=%d", err, LastExitCode())
 	}
 	var result map[string]any
-	if err := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &result); err != nil {
-		t.Fatalf("invalid JSON: %v", err)
-	}
-	if result["configExists"].(bool) {
-		t.Fatalf("configExists=%v", result["configExists"])
+	decodeEnvelopeData(t, stdout, &result)
+	checks := result["checks"].([]any)
+	first := checks[0].(map[string]any)
+	if first["status"] != "fail" || first["check"] != "config" {
+		t.Fatalf("checks=%v", checks)
 	}
 }
 
@@ -542,11 +533,13 @@ func TestDoctor_ConnectionFailedJSON(t *testing.T) {
 		t.Fatalf("err=%v exit=%d", err, LastExitCode())
 	}
 	var result map[string]any
-	if err := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &result); err != nil {
-		t.Fatalf("invalid JSON: %v", err)
+	decodeEnvelopeData(t, stdout, &result)
+	checks := result["checks"].([]any)
+	if len(checks) < 2 {
+		t.Fatalf("checks=%v", checks)
 	}
-	if result["authValid"].(bool) {
-		t.Fatalf("authValid=%v", result["authValid"])
+	if checks[1].(map[string]any)["status"] != "fail" {
+		t.Fatalf("checks=%v", checks)
 	}
 }
 
@@ -562,10 +555,9 @@ func TestDoctor_SuccessJSON(t *testing.T) {
 	setupMockJira(t, jiraSearchHandler(t, nil))
 	stdout, _ := runRootOKClean(t, "--json", "doctor")
 	var result map[string]any
-	if err := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &result); err != nil {
-		t.Fatalf("invalid JSON: %v", err)
-	}
-	if !result["configExists"].(bool) || !result["authValid"].(bool) {
+	decodeEnvelopeData(t, stdout, &result)
+	checks := result["checks"].([]any)
+	if len(checks) < 3 {
 		t.Fatalf("result=%v", result)
 	}
 	if result["username"] != "jdoe" || result["displayName"] != "John Doe" {
@@ -645,9 +637,7 @@ func TestLogin_NonInteractiveSuccessJSON(t *testing.T) {
 	ts := setupMockJira(t, jiraSearchHandler(t, nil))
 	stdout, _ := runRootOKClean(t, "--json", "login", "--host", ts.URL, "--token", "good-token")
 	var result map[string]string
-	if err := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &result); err != nil {
-		t.Fatalf("invalid JSON: %v", err)
-	}
+	decodeEnvelopeData(t, stdout, &result)
 	if result["status"] != "ok" || result["username"] != "jdoe" {
 		t.Fatalf("result=%v", result)
 	}
@@ -669,18 +659,15 @@ func TestLogin_InteractiveSuccessDefaultJSONStdout(t *testing.T) {
 	resetLoginFlags(t)
 	ts := setupMockJira(t, jiraSearchHandler(t, nil))
 	stdout, stderr, err := runRootWithStdin(t, ts.URL+"\ngood-token\n", "login")
-	if err != nil {
-		t.Fatalf("unexpected error %v (exit=%d)", err, LastExitCode())
+	if err != ErrSilent || LastExitCode() != ExitBadArgs {
+		t.Fatalf("err=%v exit=%d", err, LastExitCode())
 	}
-	var result map[string]string
-	if err := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &result); err != nil {
-		t.Fatalf("stdout is not clean JSON: %v\nstdout=%q\nstderr=%q", err, stdout, stderr)
+	errPayload := decodeEnvelopeError(t, stdout)
+	if errPayload["code"] != string(output.ErrValidation) {
+		t.Fatalf("error=%v", errPayload)
 	}
-	if result["status"] != "ok" || result["username"] != "jdoe" {
-		t.Fatalf("result=%v", result)
-	}
-	if strings.Contains(stdout, "Jira host") || !strings.Contains(stderr, "Jira host") {
-		t.Fatalf("interactive prompt should be on stderr only, stdout=%q stderr=%q", stdout, stderr)
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("default JSON login should not prompt, stderr=%q", stderr)
 	}
 }
 

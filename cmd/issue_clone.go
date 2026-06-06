@@ -94,7 +94,8 @@ var issueCloneCmd = &cobra.Command{
 			fields.Assignee = &api.NameRef{Name: source.Fields.Assignee.Name}
 		}
 
-		if dryRunOutput("clone issue", map[string]any{"source": sourceKey, "project": project, "summary": summary}) {
+		withLinks, _ := cmd.Flags().GetBool("with-links")
+		if dryRunOutput("clone issue", map[string]any{"source": sourceKey, "project": project, "summary": summary, "withLinks": withLinks, "fields": fields}) {
 			return nil
 		}
 
@@ -103,7 +104,6 @@ var issueCloneCmd = &cobra.Command{
 			return handleAPIError(err, jsonMode)
 		}
 
-		withLinks, _ := cmd.Flags().GetBool("with-links")
 		var linkErrors []string
 		if withLinks && len(source.Fields.IssueLinks) > 0 {
 			for _, link := range source.Fields.IssueLinks {

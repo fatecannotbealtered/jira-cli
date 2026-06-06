@@ -48,8 +48,8 @@ npm install -g @fatecannotbealtered-/jira-cli
 # 安装 CLI Skill（必需）— 复制到你支持的 skills 目录下
 npx skills add fatecannotbealtered/jira-cli -y -g
 
-# 登录并验证
-jira-cli login
+# 登录并验证（交互式登录使用 text 模式）
+jira-cli --format text login
 jira-cli doctor
 ```
 
@@ -69,7 +69,7 @@ go install github.com/fatecannotbealtered/jira-cli/cmd/jira-cli@latest
 ```bash
 jira-cli update --check              # 检查最新 GitHub Release
 jira-cli update                      # 更新独立二进制
-jira-cli update --version v1.2.3     # 安装指定版本
+jira-cli update --version v1.1.0     # 安装指定版本
 ```
 
 `jira-cli update` 会先校验 `checksums.txt`，再替换当前二进制。如果 CLI 通过 npm 安装，命令会优先提示使用包管理器升级：
@@ -87,7 +87,7 @@ jira-cli 支持 **Jira Data Center**（私有化部署），使用 **Personal Ac
 ### 交互式登录
 
 ```bash
-jira-cli login
+jira-cli --format text login
 # Jira host: https://jira.company.com
 # Personal Access Token (PAT): ****
 # ✔ Logged in as John Doe (johndoe)
@@ -109,7 +109,7 @@ jira-cli login --host https://jira.company.com --token <PAT>
 ```bash
 export JIRA_HOST=https://jira.company.com
 export JIRA_TOKEN=<your-personal-access-token>
-jira-cli doctor   # 确认 authValid 为 true
+jira-cli doctor   # 确认 .data.config.auth_status 为 "valid"
 ```
 
 ### 生成 PAT
@@ -128,44 +128,44 @@ jira-cli issue get PROJ-123
 jira-cli issue list --project PROJ
 jira-cli issue list --project PROJ --status "In Progress" --assignee me
 
-# 创建和编辑
-jira-cli issue create --project PROJ --summary "修复登录 Bug" --type Bug
-jira-cli issue create --project PROJ --summary "新功能" --field "Story Points=5"
-jira-cli issue edit PROJ-123 --priority High --assignee me
-jira-cli issue edit PROJ-123 --field "Story Points=8" --field "Team=Backend"
-jira-cli issue delete PROJ-123 --force          # --force 跳过确认提示
-jira-cli issue delete PROJ-123 --dry-run   # 预览删除（无需确认）
+# 创建和编辑（人工直接执行使用 text 模式；JSON 自动化使用 dry-run/confirm）
+jira-cli --format text issue create --project PROJ --summary "修复登录 Bug" --type Bug
+jira-cli --format text issue create --project PROJ --summary "新功能" --field "Story Points=5"
+jira-cli --format text issue edit PROJ-123 --priority High --assignee me
+jira-cli --format text issue edit PROJ-123 --field "Story Points=8" --field "Team=Backend"
+jira-cli --format text issue delete PROJ-123 --force          # 跳过 text 模式确认提示
+jira-cli issue delete PROJ-123 --dry-run                      # 预览删除并获取 confirm_token
 
 # 克隆
-jira-cli issue clone PROJ-123
-jira-cli issue clone PROJ-123 --summary "新标题" --with-links
+jira-cli --format text issue clone PROJ-123
+jira-cli --format text issue clone PROJ-123 --summary "新标题" --with-links
 
 # 状态流转
 jira-cli issue transitions PROJ-123          # 列出可用流转
-jira-cli issue transition PROJ-123 "Done"    # 需要提供状态名称
+jira-cli --format text issue transition PROJ-123 "Done"    # 需要提供状态名称
 
 # 批量流转
-jira-cli issue bulk-transition "Done" --issues PROJ-1,PROJ-2,PROJ-3
-jira-cli issue bulk-transition "In Progress" --jql "sprint = 10 AND status = 'To Do'"
+jira-cli --format text issue bulk-transition "Done" --issues PROJ-1,PROJ-2,PROJ-3
+jira-cli --format text issue bulk-transition "In Progress" --jql "sprint = 10 AND status = 'To Do'"
 
 # 协作
-jira-cli issue assign PROJ-123 me               # 分配给当前用户
-jira-cli issue assign PROJ-123 johndoe          # 按用户名分配（DC 用 name，非 accountId）
-jira-cli issue watch PROJ-123
-jira-cli issue vote PROJ-123
+jira-cli --format text issue assign PROJ-123 me               # 分配给当前用户
+jira-cli --format text issue assign PROJ-123 johndoe          # 按用户名分配（DC 用 name，非 accountId）
+jira-cli --format text issue watch PROJ-123
+jira-cli --format text issue vote PROJ-123
 
 # 评论
-jira-cli issue comment add PROJ-123 --body "已在 PR #42 中修复"
+jira-cli --format text issue comment add PROJ-123 --body "已在 PR #42 中修复"
 jira-cli issue comment list PROJ-123
 
 # 工时
-jira-cli issue worklog add PROJ-123 --time 2h --comment "调试"
+jira-cli --format text issue worklog add PROJ-123 --time 2h --comment "调试"
 jira-cli issue worklog list PROJ-123
 
 # 链接和附件
-jira-cli issue link PROJ-123 --to PROJ-456 --type "blocks"
-jira-cli issue attach PROJ-123 --file ./screenshot.png
-jira-cli issue remote-link PROJ-123 --url https://pr.url --title "PR #42"
+jira-cli --format text issue link PROJ-123 --to PROJ-456 --type "blocks"
+jira-cli --format text issue attach PROJ-123 --file ./screenshot.png
+jira-cli --format text issue remote-link PROJ-123 --url https://pr.url --title "PR #42"
 ```
 
 ### 搜索（JQL）
@@ -182,9 +182,9 @@ jira-cli search "project = PROJ" --limit 100 --order-by updated
 ```bash
 jira-cli sprint list --board 42
 jira-cli sprint active --board 42
-jira-cli sprint create --board 42 --name "Sprint 5" --start-date 2024-02-01 --end-date 2024-02-14
-jira-cli sprint move --sprint 10 --issues PROJ-123,PROJ-124
-jira-cli sprint close --sprint 10
+jira-cli --format text sprint create --board 42 --name "Sprint 5" --start-date 2024-02-01 --end-date 2024-02-14
+jira-cli --format text sprint move --sprint 10 --issues PROJ-123,PROJ-124
+jira-cli --format text sprint close --sprint 10
 jira-cli sprint close --sprint 10 --dry-run       # 预览，不实际关闭
 ```
 
@@ -222,7 +222,7 @@ jira-cli --format raw filter run <filterId>
 
 `jira-cli` 默认输出机器可读 JSON，脚本和 AI Agent 不需要额外加输出参数。使用 `--format json|text|raw` 控制结果格式：
 
-- `json` 是默认格式。成功 JSON 输出到 stdout；错误 JSON 输出到 stderr。
+- `json` 是默认格式。成功和失败 envelope 都输出到 stdout；日志、提示和警告输出到 stderr。
 - `text` 用于人工可读摘要、表格、彩色状态、diff/log 文本和交互提示。
 - `raw` 用于支持该格式的命令，返回未包装的原始结果。不支持 raw 的命令会明确返回参数错误，不会静默降级。
 
@@ -230,18 +230,18 @@ jira-cli --format raw filter run <filterId>
 
 `--compact` 只影响 JSON。`--fields` 只适用于 JSON 输出。`--quiet` 只压制辅助文本输出，不压制 JSON/raw 主体结果。
 
-默认使用**扁平 JSON 格式**（token 效率高，适合 AI Agent）：
+默认在 envelope 的 `data` 字段中返回**扁平 JSON 格式**（token 效率高，适合 AI Agent）：
 
 ```bash
 # 扁平 JSON（默认）—— 最小字段，低 token 开销
 jira-cli issue get PROJ-123
-jira-cli search "project = PROJ" | jq '.issues[].key'
+jira-cli search "project = PROJ" | jq '.data.issues[].key'
 
-# issue list 返回裸数组；search 用分页元数据包裹 issues
-# filter run 加 --fields 时也返回裸裁剪数组
-jira-cli issue list --project PROJ | jq '.[].key'
-jira-cli search "project = PROJ" | jq '.issues[].key'
-jira-cli filter run 12345 --fields key,summary | jq '.[].key'
+# issue list 在 .data 中返回数组；search 在 .data 中用分页元数据包裹 issues
+# filter run 加 --fields 时也在 .data 中返回裁剪数组
+jira-cli issue list --project PROJ | jq '.data[].key'
+jira-cli search "project = PROJ" | jq '.data.issues[].key'
+jira-cli filter run 12345 --fields key,summary | jq '.data[].key'
 
 # 裁剪 flat JSON 输出（issue get / issue list / sprint / filter run）
 jira-cli issue get PROJ-123 --fields key,summary,status,assignee
@@ -262,22 +262,36 @@ jira-cli --compact issue get PROJ-123
 jira-cli issue delete PROJ-123 --dry-run
 ```
 
-### 验证连通性（`doctor`）
-
-默认 JSON 输出下检查 `authValid` 字段（认证/配置失败时退出码为 3）：
+JSON 模式写命令使用两步确认流程：
 
 ```bash
-jira-cli doctor | jq '.authValid'   # 必须为 true
+TOKEN=$(jira-cli issue create --project PROJ --summary "修复登录 Bug" --dry-run --compact | jq -r '.data.confirm_token')
+jira-cli issue create --project PROJ --summary "修复登录 Bug" --confirm "$TOKEN"
 ```
 
-错误响应（stderr）包含机器可读的错误码和可操作提示：
+### 验证连通性（`doctor`）
+
+默认 JSON 输出下检查 `data.config.auth_status` 字段（认证/配置失败时退出码为 4）：
+
+```bash
+jira-cli doctor | jq -e '.data.config.auth_status == "valid"'
+```
+
+错误响应使用同样的 stdout envelope，并包含机器可读的错误码和重试提示：
 
 ```json
 {
-  "error": "Jira API error 404: Issue does not exist",
-  "statusCode": 404,
-  "errorCode": "NOT_FOUND",
-  "hint": "Verify the issue key exists and you have permission to view it"
+  "ok": false,
+  "schema_version": "1.0",
+  "error": {
+    "code": "E_NOT_FOUND",
+    "message": "Jira API error 404: Issue does not exist",
+    "details": {
+      "status_code": 404,
+      "hint": "Verify the resource key/ID exists and you have permission to view it"
+    },
+    "retryable": false
+  }
 }
 ```
 
@@ -306,6 +320,7 @@ jira-cli doctor | jq '.authValid'   # 必须为 true
 | `--force` | 跳过交互式确认提示 |
 | `--quiet` | 压制辅助文本输出，不压制 JSON/raw 主体结果 |
 | `--dry-run` | 显示将要执行的操作但不实际执行（写命令和 update 支持） |
+| `--confirm <token>` | 使用 `--dry-run` 返回的 token 执行 JSON 模式写命令 |
 
 ### 命令级标志
 
@@ -331,7 +346,7 @@ jira-cli doctor | jq '.authValid'   # 必须为 true
 | 问题 | 解决方案 |
 |------|---------|
 | npm install 失败 / 找不到 curl | 确保 PATH 中有 `curl`（npm postinstall 用它下载二进制） |
-| 找不到配置 | 运行 `jira-cli login` 或设置 `JIRA_HOST` 和 `JIRA_TOKEN` 环境变量 |
+| 找不到配置 | 运行 `jira-cli --format text login`、`jira-cli login --host <url> --token <pat>`，或设置 `JIRA_HOST` 和 `JIRA_TOKEN` 环境变量 |
 | 认证失败 | 在 Jira DC 个人资料设置中重新生成 PAT |
 | 权限不足 | 检查 PAT 权限范围和项目权限 |
 | 资源未找到 | 确认 Issue Key 或项目 Key 是否存在 |
@@ -342,7 +357,7 @@ jira-cli doctor | jq '.authValid'   # 必须为 true
 
 - 凭据本地存储在 `~/.jira-cli/config.json`，文件权限 `0600`（仅用户可读）
 - 配置目录权限 `0700`
-- `jira-cli login` 时 PAT 输入隐藏（使用终端安全输入）
+- `jira-cli --format text login` 时 PAT 输入隐藏（使用终端安全输入）
 - 所有通信使用 HTTPS（host 必须以 `https://` 开头）
 - 凭据不会被记录或传输给第三方
 - 环境变量 `JIRA_HOST` 和 `JIRA_TOKEN` 优先于配置文件

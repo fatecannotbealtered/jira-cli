@@ -22,6 +22,7 @@ var installSkillCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(installSkillCmd)
+	markWrite(installSkillCmd)
 }
 
 // findSkillsDir resolves bundled skill files: beside the binary (release tarball),
@@ -62,6 +63,19 @@ func runInstallSkill(cmd *cobra.Command, args []string) error {
 		return SilentErr(ExitBadArgs)
 	}
 	targetDir := filepath.Join(home, ".openclaw", "skills")
+	previewFiles, err := listSkillFiles(skillsDir)
+	if err != nil {
+		output.Error("install failed: " + err.Error())
+		return SilentErr(ExitBadArgs)
+	}
+	if len(previewFiles) == 0 {
+		output.Error("no skill files found to install")
+		return SilentErr(ExitBadArgs)
+	}
+	if dryRunOutput("install skill", map[string]any{"targetDir": targetDir, "installedFiles": previewFiles}) {
+		return nil
+	}
+
 	if err := os.MkdirAll(targetDir, 0755); err != nil {
 		output.Error("failed to create target directory: " + err.Error())
 		return SilentErr(ExitBadArgs)
@@ -127,6 +141,22 @@ func runInstallSkill(cmd *cobra.Command, args []string) error {
 	output.Gray("  AI Agents will now have access to jira-cli capabilities.")
 	fmt.Println()
 	return nil
+}
+
+func listSkillFiles(skillsDir string) ([]string, error) {
+	var files []string
+	err := filepathWalk(skillsDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return nil
+		}
+		rel, _ := filepath.Rel(skillsDir, path)
+		files = append(files, rel)
+		return nil
+	})
+	return files, err
 }
 
 func copyFile(src, dst string) error {

@@ -48,8 +48,8 @@ npm install -g @fatecannotbealtered-/jira-cli
 # Install CLI Skill (required) — copies into your agent-supported skills directory
 npx skills add fatecannotbealtered/jira-cli -y -g
 
-# Login and verify
-jira-cli login
+# Login and verify (interactive login is text mode)
+jira-cli --format text login
 jira-cli doctor
 ```
 
@@ -70,7 +70,7 @@ Download from [GitHub Releases](https://github.com/fatecannotbealtered/jira-cli/
 ```bash
 jira-cli update --check              # check latest GitHub Release
 jira-cli update                      # update a standalone binary
-jira-cli update --version v1.2.3     # install a specific release
+jira-cli update --version v1.1.0     # install a specific release
 ```
 
 `jira-cli update` verifies `checksums.txt` before replacing the current binary. If the CLI was installed through npm, the command will recommend the package-manager path instead:
@@ -88,7 +88,7 @@ jira-cli supports **Jira Data Center** (private deployments) with **Personal Acc
 ### Interactive login
 
 ```bash
-jira-cli login
+jira-cli --format text login
 # Jira host: https://jira.company.com
 # Personal Access Token (PAT): ****
 # ✔ Logged in as John Doe (johndoe)
@@ -110,7 +110,7 @@ Environment variables take precedence over the config file. This is the recommen
 ```bash
 export JIRA_HOST=https://jira.company.com
 export JIRA_TOKEN=<your-personal-access-token>
-jira-cli doctor   # verify authValid is true
+jira-cli doctor   # verify .data.config.auth_status is "valid"
 ```
 
 ### Generating a PAT
@@ -129,47 +129,47 @@ jira-cli issue get PROJ-123
 jira-cli issue list --project PROJ
 jira-cli issue list --project PROJ --status "In Progress" --assignee me
 
-# Create & Edit
-jira-cli issue create --project PROJ --summary "Fix login bug" --type Bug
-jira-cli issue create --project PROJ --summary "Sized story" --field "Story Points=5"
-jira-cli issue edit PROJ-123 --priority High --assignee me
-jira-cli issue edit PROJ-123 --field "Story Points=8" --field "Team=Backend"
-jira-cli issue delete PROJ-123 --force          # --force skips confirmation prompt
-jira-cli issue delete PROJ-123 --dry-run   # preview delete (no confirmation prompt)
+# Create & Edit (direct human execution uses text mode; JSON automation uses dry-run/confirm)
+jira-cli --format text issue create --project PROJ --summary "Fix login bug" --type Bug
+jira-cli --format text issue create --project PROJ --summary "Sized story" --field "Story Points=5"
+jira-cli --format text issue edit PROJ-123 --priority High --assignee me
+jira-cli --format text issue edit PROJ-123 --field "Story Points=8" --field "Team=Backend"
+jira-cli --format text issue delete PROJ-123 --force          # skips text-mode confirmation prompt
+jira-cli issue delete PROJ-123 --dry-run                      # preview delete and get confirm_token
 
 # Clone
-jira-cli issue clone PROJ-123
-jira-cli issue clone PROJ-123 --summary "New title" --with-links
+jira-cli --format text issue clone PROJ-123
+jira-cli --format text issue clone PROJ-123 --summary "New title" --with-links
 
 # Status
 jira-cli issue transitions PROJ-123          # List available transitions
-jira-cli issue transition PROJ-123 "Done"    # Status name required as argument
+jira-cli --format text issue transition PROJ-123 "Done"    # Status name required as argument
 
 # Bulk Transition
-jira-cli issue bulk-transition "Done" --issues PROJ-1,PROJ-2,PROJ-3
-jira-cli issue bulk-transition "In Progress" --jql "sprint = 10 AND status = 'To Do'"
+jira-cli --format text issue bulk-transition "Done" --issues PROJ-1,PROJ-2,PROJ-3
+jira-cli --format text issue bulk-transition "In Progress" --jql "sprint = 10 AND status = 'To Do'"
 
 # Collaboration
-jira-cli issue assign PROJ-123 me               # Assign to current user
-jira-cli issue assign PROJ-123 johndoe          # Assign by username (DC uses name, not accountId)
-jira-cli issue watch PROJ-123
-jira-cli issue vote PROJ-123
+jira-cli --format text issue assign PROJ-123 me               # Assign to current user
+jira-cli --format text issue assign PROJ-123 johndoe          # Assign by username (DC uses name, not accountId)
+jira-cli --format text issue watch PROJ-123
+jira-cli --format text issue vote PROJ-123
 
 # Comments
-jira-cli issue comment add PROJ-123 --body "Fixed in PR #42"
+jira-cli --format text issue comment add PROJ-123 --body "Fixed in PR #42"
 jira-cli issue comment list PROJ-123
 
 # Worklogs
-jira-cli issue worklog add PROJ-123 --time 2h --comment "Debugging"
+jira-cli --format text issue worklog add PROJ-123 --time 2h --comment "Debugging"
 jira-cli issue worklog list PROJ-123
 
 # Links & Attachments
-jira-cli issue link PROJ-123 --to PROJ-456 --type "blocks"
-jira-cli issue attach PROJ-123 --file ./screenshot.png
+jira-cli --format text issue link PROJ-123 --to PROJ-456 --type "blocks"
+jira-cli --format text issue attach PROJ-123 --file ./screenshot.png
 jira-cli issue attachments PROJ-123                       # List attachments
 jira-cli issue attachments PROJ-123 --out ./downloads     # Download all attachments
 jira-cli issue attachments PROJ-123 --out ./downloads --id 4609477   # Download one by ID
-jira-cli issue remote-link PROJ-123 --url https://pr.url --title "PR #42"
+jira-cli --format text issue remote-link PROJ-123 --url https://pr.url --title "PR #42"
 ```
 
 ### Search (JQL)
@@ -186,9 +186,9 @@ jira-cli search "project = PROJ" --limit 100 --order-by updated
 ```bash
 jira-cli sprint list --board 42
 jira-cli sprint active --board 42
-jira-cli sprint create --board 42 --name "Sprint 5" --start-date 2024-02-01 --end-date 2024-02-14
-jira-cli sprint move --sprint 10 --issues PROJ-123,PROJ-124
-jira-cli sprint close --sprint 10
+jira-cli --format text sprint create --board 42 --name "Sprint 5" --start-date 2024-02-01 --end-date 2024-02-14
+jira-cli --format text sprint move --sprint 10 --issues PROJ-123,PROJ-124
+jira-cli --format text sprint close --sprint 10
 jira-cli sprint close --sprint 10 --dry-run       # preview without closing
 ```
 
@@ -226,7 +226,7 @@ jira-cli --format raw filter run <filterId>
 
 `jira-cli` defaults to machine-readable JSON, so scripts and AI Agents can omit output flags. Use `--format json|text|raw` to choose the result format:
 
-- `json` is the default. Success JSON goes to stdout; error JSON goes to stderr.
+- `json` is the default. Success and error envelopes both go to stdout; logs, prompts, and warnings go to stderr.
 - `text` is for human-readable summaries, tables, colors, diff/log text, and prompts.
 - `raw` is for unwrapped raw command results where supported. Unsupported commands return an argument error instead of silently downgrading.
 
@@ -234,18 +234,18 @@ jira-cli --format raw filter run <filterId>
 
 `--compact` only affects JSON. `--fields` only works with JSON output. `--quiet` suppresses auxiliary text output only; it does not suppress JSON or raw main results.
 
-By default, issue and sprint data is returned in a **flat, token-efficient JSON format** (ideal for AI Agents):
+By default, issue and sprint data is returned in the envelope's `data` field as a **flat, token-efficient JSON format** (ideal for AI Agents):
 
 ```bash
 # Flat JSON (default) — minimal fields, low token cost
 jira-cli issue get PROJ-123
-jira-cli search "project = PROJ" | jq '.issues[].key'
+jira-cli search "project = PROJ" | jq '.data.issues[].key'
 
-# issue list returns a bare array; search wraps issues in pagination metadata
-# filter run with --fields also returns a bare trimmed array
-jira-cli issue list --project PROJ | jq '.[].key'
-jira-cli search "project = PROJ" | jq '.issues[].key'
-jira-cli filter run 12345 --fields key,summary | jq '.[].key'
+# issue list returns an array in .data; search wraps issues in pagination metadata under .data
+# filter run with --fields also returns a trimmed array in .data
+jira-cli issue list --project PROJ | jq '.data[].key'
+jira-cli search "project = PROJ" | jq '.data.issues[].key'
+jira-cli filter run 12345 --fields key,summary | jq '.data[].key'
 
 # Trim flat JSON output (issue get / issue list / sprint / filter run)
 jira-cli issue get PROJ-123 --fields key,summary,status,assignee
@@ -266,22 +266,36 @@ jira-cli --compact issue get PROJ-123
 jira-cli issue delete PROJ-123 --dry-run
 ```
 
-### Verify connectivity (`doctor`)
-
-With the default JSON output, check the `authValid` field (exit code 3 on auth/config failure):
+JSON-mode write commands use a two-step confirmation flow:
 
 ```bash
-jira-cli doctor | jq '.authValid'   # must be true
+TOKEN=$(jira-cli issue create --project PROJ --summary "Fix login bug" --dry-run --compact | jq -r '.data.confirm_token')
+jira-cli issue create --project PROJ --summary "Fix login bug" --confirm "$TOKEN"
 ```
 
-Error responses (stderr) include machine-readable error codes and actionable hints:
+### Verify connectivity (`doctor`)
+
+With the default JSON output, check `data.config.auth_status` (exit code 4 on auth/config failure):
+
+```bash
+jira-cli doctor | jq -e '.data.config.auth_status == "valid"'
+```
+
+Error responses use the same stdout envelope and include machine-readable error codes and retry hints:
 
 ```json
 {
-  "error": "Jira API error 404: Issue does not exist",
-  "statusCode": 404,
-  "errorCode": "NOT_FOUND",
-  "hint": "Verify the issue key exists and you have permission to view it"
+  "ok": false,
+  "schema_version": "1.0",
+  "error": {
+    "code": "E_NOT_FOUND",
+    "message": "Jira API error 404: Issue does not exist",
+    "details": {
+      "status_code": 404,
+      "hint": "Verify the resource key/ID exists and you have permission to view it"
+    },
+    "retryable": false
+  }
 }
 ```
 
@@ -321,6 +335,7 @@ Credentials stored at `~/.jira-cli/config.json` (permissions: 0600):
 | `--force` | Skip interactive confirmation prompts |
 | `--quiet` | Suppress auxiliary text output; does not suppress JSON/raw main results |
 | `--dry-run` | Show what would be done without executing (supported by write/update commands) |
+| `--confirm <token>` | Execute a JSON-mode write command using the token returned by `--dry-run` |
 
 ### Per-command flags
 
@@ -337,7 +352,7 @@ Credentials stored at `~/.jira-cli/config.json` (permissions: 0600):
 | Issue | Solution |
 |---|---|
 | npm install fails / curl not found | Ensure `curl` is on PATH (required by npm postinstall to download the binary) |
-| Config not found | Run `jira-cli login` or set `JIRA_HOST` and `JIRA_TOKEN` env vars |
+| Config not found | Run `jira-cli --format text login`, `jira-cli login --host <url> --token <pat>`, or set `JIRA_HOST` and `JIRA_TOKEN` env vars |
 | Authentication failed | Regenerate PAT in your Jira DC profile settings |
 | Permission denied | Check your PAT scope and project permissions |
 | Resource not found | Verify the issue key or project key exists |
@@ -348,7 +363,7 @@ Credentials stored at `~/.jira-cli/config.json` (permissions: 0600):
 
 - Credentials are stored locally at `~/.jira-cli/config.json` with `0600` file permissions (user-only readable)
 - Config directory is created with `0700` permissions
-- PAT input is hidden during `jira-cli login` (uses terminal secure input)
+- PAT input is hidden during `jira-cli --format text login` (uses terminal secure input)
 - All communication uses HTTPS (host must start with `https://`)
 - No credentials are logged or transmitted to third parties
 - Environment variables `JIRA_HOST` and `JIRA_TOKEN` take precedence over config file

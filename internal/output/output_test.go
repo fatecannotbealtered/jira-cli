@@ -156,13 +156,15 @@ func TestPrintJSON_ValidJSON(t *testing.T) {
 		PrintJSON(p)
 	})
 
-	// Output must be valid JSON
-	var got payload
-	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &got); err != nil {
+	var env struct {
+		OK   bool    `json:"ok"`
+		Data payload `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &env); err != nil {
 		t.Fatalf("PrintJSON output is not valid JSON: %v\nOutput: %s", err, out)
 	}
-	if got.Key != p.Key || got.Value != p.Value {
-		t.Errorf("PrintJSON round-trip: got %+v, want %+v", got, p)
+	if !env.OK || env.Data.Key != p.Key || env.Data.Value != p.Value {
+		t.Errorf("PrintJSON round-trip: got %+v, want %+v", env, p)
 	}
 }
 
@@ -189,8 +191,9 @@ func TestPrintJSON_Map(t *testing.T) {
 	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &got); err != nil {
 		t.Fatalf("PrintJSON map output is not valid JSON: %v", err)
 	}
-	if got["error"] != "not found" {
-		t.Errorf("expected error='not found', got %v", got["error"])
+	gotData := got["data"].(map[string]any)
+	if gotData["error"] != "not found" {
+		t.Errorf("expected error='not found', got %v", gotData["error"])
 	}
 }
 

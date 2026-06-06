@@ -114,7 +114,7 @@ func TestHandleAPIError_APIError_Text(t *testing.T) {
 func TestHandleAPIError_APIError_JSON(t *testing.T) {
 	lastExit = 0
 	apiErr := &api.APIError{StatusCode: 401, ErrorMessages: []string{"unauthorized"}}
-	errOut := captureStderr(t, func() {
+	errOut := captureStdout(t, func() {
 		got := handleAPIError(apiErr, true)
 		if !errors.Is(got, ErrSilent) {
 			t.Fatalf("expected ErrSilent, got %v", got)
@@ -122,10 +122,11 @@ func TestHandleAPIError_APIError_JSON(t *testing.T) {
 	})
 	var payload map[string]any
 	if err := json.Unmarshal([]byte(strings.TrimSpace(errOut)), &payload); err != nil {
-		t.Fatalf("stderr is not JSON: %v\n%s", err, errOut)
+		t.Fatalf("stdout is not JSON: %v\n%s", err, errOut)
 	}
-	if payload["errorCode"] != string(output.ErrAuth) {
-		t.Errorf("errorCode = %v, want %q", payload["errorCode"], output.ErrAuth)
+	errPayload := payload["error"].(map[string]any)
+	if errPayload["code"] != string(output.ErrAuth) {
+		t.Errorf("code = %v, want %q", errPayload["code"], output.ErrAuth)
 	}
 	if LastExitCode() != ExitAuth {
 		t.Errorf("exit = %d, want %d", LastExitCode(), ExitAuth)
@@ -152,7 +153,7 @@ func TestHandleAPIError_NonAPIError_Text(t *testing.T) {
 
 func TestHandleAPIError_NonAPIError_JSON(t *testing.T) {
 	lastExit = 0
-	errOut := captureStderr(t, func() {
+	errOut := captureStdout(t, func() {
 		got := handleAPIError(errors.New("timeout"), true)
 		if !errors.Is(got, ErrSilent) {
 			t.Fatalf("expected ErrSilent, got %v", got)
@@ -160,10 +161,11 @@ func TestHandleAPIError_NonAPIError_JSON(t *testing.T) {
 	})
 	var payload map[string]any
 	if err := json.Unmarshal([]byte(strings.TrimSpace(errOut)), &payload); err != nil {
-		t.Fatalf("stderr is not JSON: %v\n%s", err, errOut)
+		t.Fatalf("stdout is not JSON: %v\n%s", err, errOut)
 	}
-	if payload["errorCode"] != string(output.ErrNetwork) {
-		t.Errorf("errorCode = %v, want %q", payload["errorCode"], output.ErrNetwork)
+	errPayload := payload["error"].(map[string]any)
+	if errPayload["code"] != string(output.ErrNetwork) {
+		t.Errorf("code = %v, want %q", errPayload["code"], output.ErrNetwork)
 	}
 	if LastExitCode() != ExitNetwork {
 		t.Errorf("exit = %d, want %d", LastExitCode(), ExitNetwork)
@@ -263,7 +265,7 @@ func TestNewClient_ConfigError_JSON(t *testing.T) {
 	jsonMode = true
 	lastExit = 0
 
-	errOut := captureStderr(t, func() {
+	errOut := captureStdout(t, func() {
 		_, _, err := newClient()
 		if !errors.Is(err, ErrSilent) {
 			t.Fatalf("expected ErrSilent, got %v", err)
@@ -271,10 +273,11 @@ func TestNewClient_ConfigError_JSON(t *testing.T) {
 	})
 	var payload map[string]any
 	if err := json.Unmarshal([]byte(strings.TrimSpace(errOut)), &payload); err != nil {
-		t.Fatalf("stderr is not JSON: %v\n%s", err, errOut)
+		t.Fatalf("stdout is not JSON: %v\n%s", err, errOut)
 	}
-	if payload["errorCode"] != string(output.ErrConfig) {
-		t.Errorf("errorCode = %v, want %q", payload["errorCode"], output.ErrConfig)
+	errPayload := payload["error"].(map[string]any)
+	if errPayload["code"] != string(output.ErrConfig) {
+		t.Errorf("code = %v, want %q", errPayload["code"], output.ErrConfig)
 	}
 }
 

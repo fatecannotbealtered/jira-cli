@@ -177,7 +177,7 @@ func TestRunInstallSkill_ExecutableError(t *testing.T) {
 	osExecutable = func() (string, error) {
 		return "", errors.New("no executable")
 	}
-	runRootExpectSilent(t, ExitBadArgs, "install-skill")
+	runRootExpectSilent(t, ExitBadArgs, "--format", "text", "install-skill")
 }
 
 func TestRunInstallSkill_WalkCopyError(t *testing.T) {
@@ -192,7 +192,7 @@ func TestRunInstallSkill_WalkCopyError(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Chdir(workDir)
-	runRootExpectSilent(t, ExitBadArgs, "install-skill")
+	runRootExpectSilent(t, ExitBadArgs, "--format", "text", "install-skill")
 }
 
 func TestRunInstallSkill_CopyFileErrorDuringWalk(t *testing.T) {
@@ -207,7 +207,7 @@ func TestRunInstallSkill_CopyFileErrorDuringWalk(t *testing.T) {
 	copyFileFn = func(_, _ string) error {
 		return errors.New("copy blocked")
 	}
-	runRootExpectSilent(t, ExitBadArgs, "install-skill")
+	runRootExpectSilent(t, ExitBadArgs, "--format", "text", "install-skill")
 }
 
 func TestRunInstallSkill_WalkStatError(t *testing.T) {
@@ -222,7 +222,7 @@ func TestRunInstallSkill_WalkStatError(t *testing.T) {
 	filepathWalk = func(_ string, fn filepath.WalkFunc) error {
 		return fn(filepath.Join(workDir, "skills", "missing"), nil, os.ErrNotExist)
 	}
-	runRootExpectSilent(t, ExitBadArgs, "install-skill")
+	runRootExpectSilent(t, ExitBadArgs, "--format", "text", "install-skill")
 }
 
 func TestRunInstallSkill_WalkDirOnly(t *testing.T) {
@@ -232,7 +232,7 @@ func TestRunInstallSkill_WalkDirOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Chdir(workDir)
-	runRootExpectSilent(t, ExitBadArgs, "install-skill")
+	runRootExpectSilent(t, ExitBadArgs, "--format", "text", "install-skill")
 }
 
 func TestRunInstallSkill_MkdirDuringWalkFails(t *testing.T) {
@@ -249,7 +249,7 @@ func TestRunInstallSkill_MkdirDuringWalkFails(t *testing.T) {
 	if err := os.WriteFile(targetBlock, []byte("not a dir"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	runRootExpectSilent(t, ExitBadArgs, "install-skill")
+	runRootExpectSilent(t, ExitBadArgs, "--format", "text", "install-skill")
 }
 
 func setupSkillsWorkdirForGap(t *testing.T) string {
@@ -281,7 +281,7 @@ func TestLogin_InteractiveReadPasswordError(t *testing.T) {
 	}
 
 	ts := setupMockJira(t, jiraSearchHandler(t, nil))
-	_, stderr, err := runRootWithStdin(t, ts.URL+"\n", "login")
+	_, stderr, err := runRootWithStdin(t, ts.URL+"\n", "--format", "text", "login")
 	if !errors.Is(err, ErrSilent) || LastExitCode() != ExitBadArgs {
 		t.Fatalf("err=%v exit=%d", err, LastExitCode())
 	}

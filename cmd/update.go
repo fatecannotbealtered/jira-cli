@@ -60,6 +60,7 @@ func init() {
 	updateCmd.Flags().Bool("check", false, "Check whether an update is available without installing")
 	updateCmd.Flags().String("version", "", "Install a specific release version (for example v1.2.3)")
 	rootCmd.AddCommand(updateCmd)
+	markWrite(updateCmd)
 }
 
 type githubRelease struct {
@@ -154,19 +155,18 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 	}
 	if dryRun {
 		result.DryRun = true
-		printUpdateResult(result)
+		printUpdateDryRunResult(result)
 		return nil
 	}
-	if !forceMode && !confirmAction(
-		fmt.Sprintf("Update jira-cli from %s to %s? Type %s to confirm", currentVersion, latestVersion, latestVersion),
-		latestVersion,
-	) {
-		if jsonMode {
-			output.PrintErrorJSONWithCode("Update cancelled.", 0, output.ErrValidation)
-		} else {
-			output.Warn("Update cancelled.")
+	if !forceMode {
+		if confirmToken == "" {
+			output.PrintErrorJSONWithCode("update requires --confirm token; run with --dry-run first", 0, output.ErrConfirmRequired)
+			return SilentErr(ExitConfirmRequired)
 		}
-		return SilentErr(ExitBadArgs)
+		if err := validateConfirmToken("update jira-cli", updateConfirmDetail(result), confirmToken, time.Now().UTC()); err != nil {
+			output.PrintErrorJSONWithCode(err.Error(), 0, output.ErrConflict)
+			return SilentErr(ExitConflict)
+		}
 	}
 
 	archiveData, err := downloadUpdateURL(cmd.Context(), archiveAsset.BrowserDownloadURL, maxArchiveBytes)
@@ -259,6 +259,33 @@ func printUpdateResult(result updateResult) {
 		output.Info(fmt.Sprintf("Update available: %s -> %s", result.CurrentVersion, result.LatestVersion))
 	} else {
 		output.Success(fmt.Sprintf("jira-cli is already up to date (%s)", result.CurrentVersion))
+	}
+}
+
+func printUpdateDryRunResult(result updateResult) {
+	if jsonMode {
+		expiresAt := time.Now().UTC().Add(15 * time.Minute)
+		output.PrintJSON(map[string]any{
+			"preview": map[string]any{
+				"action":  "update jira-cli",
+				"changes": []map[string]any{{"operation": "replace executable", "target": result.Path}},
+				"result":  result,
+			},
+			"confirm_token": generateConfirmToken("update jira-cli", updateConfirmDetail(result), expiresAt),
+			"expires_at":    expiresAt.Format(time.RFC3339),
+		})
+		return
+	}
+	printUpdateResult(result)
+}
+
+func updateConfirmDetail(result updateResult) map[string]any {
+	return map[string]any{
+		"currentVersion":   result.CurrentVersion,
+		"latestVersion":    result.LatestVersion,
+		"requestedVersion": result.RequestedVersion,
+		"asset":            result.Asset,
+		"path":             result.Path,
 	}
 }
 

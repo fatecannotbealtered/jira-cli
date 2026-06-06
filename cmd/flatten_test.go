@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"encoding/json"
-	"strings"
 	"testing"
 
 	"github.com/fatecannotbealtered/jira-cli/internal/api"
@@ -54,9 +52,7 @@ func TestPrintSprintsJSON_Flat(t *testing.T) {
 		printSprintsJSON(sprints, false, nil)
 	})
 	var flat []output.FlatSprint
-	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &flat); err != nil {
-		t.Fatalf("not valid JSON: %v", err)
-	}
+	decodeEnvelopeData(t, out, &flat)
 	if len(flat) != 1 || flat[0].Name != "Sprint A" {
 		t.Errorf("unexpected output: %+v", flat)
 	}
@@ -68,9 +64,7 @@ func TestPrintSprintsJSON_Raw(t *testing.T) {
 		printSprintsJSON(sprints, true, nil)
 	})
 	var raw []api.Sprint
-	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &raw); err != nil {
-		t.Fatalf("not valid JSON: %v", err)
-	}
+	decodeEnvelopeData(t, out, &raw)
 	if len(raw) != 1 || raw[0].Name != "Raw Sprint" {
 		t.Errorf("unexpected raw sprints: %+v", raw)
 	}
@@ -84,9 +78,7 @@ func TestPrintSprintsJSON_Fields(t *testing.T) {
 		printSprintsJSON(sprints, false, []string{"id", "name"})
 	})
 	var result []map[string]any
-	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &result); err != nil {
-		t.Fatalf("not valid JSON: %v", err)
-	}
+	decodeEnvelopeData(t, out, &result)
 	if len(result) != 1 {
 		t.Fatalf("expected 1 sprint, got %d", len(result))
 	}
@@ -109,9 +101,7 @@ func TestPrintIssuesJSON_Raw(t *testing.T) {
 		printIssuesJSON(issues, true, nil)
 	})
 	var raw []api.Issue
-	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &raw); err != nil {
-		t.Fatalf("not valid JSON: %v", err)
-	}
+	decodeEnvelopeData(t, out, &raw)
 	if len(raw) != 1 || raw[0].Key != "R-1" {
 		t.Errorf("unexpected raw issues: %+v", raw)
 	}
@@ -133,9 +123,7 @@ func TestPrintIssuesJSON_Fields(t *testing.T) {
 		printIssuesJSON(issues, false, []string{"key", "status"})
 	})
 	var result []map[string]any
-	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &result); err != nil {
-		t.Fatalf("not valid JSON: %v", err)
-	}
+	decodeEnvelopeData(t, out, &result)
 	if len(result) != 1 {
 		t.Fatalf("expected 1 issue, got %d", len(result))
 	}
@@ -185,18 +173,14 @@ func TestPrintIssueJSON_Description(t *testing.T) {
 
 	out := captureStdout(t, func() { printIssueJSON(issue, false, nil) })
 	var m map[string]any
-	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &m); err != nil {
-		t.Fatalf("not valid JSON: %v", err)
-	}
+	decodeEnvelopeData(t, out, &m)
 	if m["description"] != "branch: feat-x" {
 		t.Errorf("get default description = %v, want branch: feat-x", m["description"])
 	}
 
 	out = captureStdout(t, func() { printIssueJSON(issue, false, []string{"key", "description"}) })
 	m = nil
-	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &m); err != nil {
-		t.Fatalf("not valid JSON: %v", err)
-	}
+	decodeEnvelopeData(t, out, &m)
 	if m["description"] != "branch: feat-x" {
 		t.Errorf("get --fields description = %v, want branch: feat-x", m["description"])
 	}
@@ -204,9 +188,7 @@ func TestPrintIssueJSON_Description(t *testing.T) {
 	// Bulk list stays lean: no description in default flat output.
 	out = captureStdout(t, func() { printIssuesJSON([]api.Issue{*issue}, false, nil) })
 	var arr []map[string]any
-	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &arr); err != nil {
-		t.Fatalf("not valid JSON: %v", err)
-	}
+	decodeEnvelopeData(t, out, &arr)
 	if _, ok := arr[0]["description"]; ok {
 		t.Error("bulk flat output should not include description (token efficiency)")
 	}

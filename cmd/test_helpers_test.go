@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -39,8 +40,10 @@ func runRoot(t *testing.T, args ...string) (stdout, stderr string, err error) {
 	origQuietMode := quietMode
 	origDryRun := dryRun
 	origForceMode := forceMode
+	origConfirmToken := confirmToken
 	origCompactJSON := output.CompactJSON
 	origErrorJSON := output.ErrorJSON
+	origEnvelopeJSON := output.EnvelopeJSON
 	origQuiet := output.Quiet
 	defer func() {
 		outputFormat = origOutputFormat
@@ -50,8 +53,10 @@ func runRoot(t *testing.T, args ...string) (stdout, stderr string, err error) {
 		quietMode = origQuietMode
 		dryRun = origDryRun
 		forceMode = origForceMode
+		confirmToken = origConfirmToken
 		output.CompactJSON = origCompactJSON
 		output.ErrorJSON = origErrorJSON
+		output.EnvelopeJSON = origEnvelopeJSON
 		output.Quiet = origQuiet
 	}()
 
@@ -127,6 +132,13 @@ func runRootExpectSilent(t *testing.T, code int, args ...string) (stdout, stderr
 // runRootOK runs CLI expecting success (nil error, exit 0).
 func runRootOK(t *testing.T, args ...string) (stdout, stderr string) {
 	t.Helper()
+	if argsNeedAutoConfirm(args) {
+		token := dryRunConfirmToken(t, args...)
+		resetCLIState(t)
+		if token != "" {
+			args = append([]string{"--confirm", token}, args...)
+		}
+	}
 	stdout, stderr, err := runRoot(t, args...)
 	if err != nil {
 		t.Fatalf("args=%v: unexpected error %v (exit=%d)", args, err, LastExitCode())
@@ -135,6 +147,149 @@ func runRootOK(t *testing.T, args ...string) (stdout, stderr string) {
 		t.Fatalf("args=%v: exit=%d, want 0", args, LastExitCode())
 	}
 	return stdout, stderr
+}
+
+func dryRunConfirmToken(t *testing.T, args ...string) string {
+	t.Helper()
+	stdout, _, err := runRoot(t, append([]string{"--dry-run"}, args...)...)
+	if err != nil {
+		t.Fatalf("dry-run args=%v: unexpected error %v (exit=%d)", args, err, LastExitCode())
+	}
+	var env struct {
+		Data struct {
+			ConfirmToken string `json:"confirm_token"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &env); err != nil {
+		t.Fatalf("dry-run output is not JSON: %v\n%s", err, stdout)
+	}
+	if env.Data.ConfirmToken == "" {
+		return ""
+	}
+	return env.Data.ConfirmToken
+}
+
+func decodeEnvelopeData(t *testing.T, out string, v any) {
+	t.Helper()
+	trimmed := strings.TrimSpace(out)
+	var env struct {
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(trimmed), &env); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, out)
+	}
+	if len(env.Data) == 0 {
+		if err := json.Unmarshal([]byte(trimmed), v); err != nil {
+			t.Fatalf("invalid raw JSON: %v\n%s", err, out)
+		}
+		return
+	}
+	if err := json.Unmarshal(env.Data, v); err != nil {
+		t.Fatalf("invalid envelope data: %v\n%s", err, out)
+	}
+}
+
+func decodeEnvelopeError(t *testing.T, out string) map[string]any {
+	t.Helper()
+	var env struct {
+		Error map[string]any `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &env); err != nil {
+		t.Fatalf("invalid error envelope: %v\n%s", err, out)
+	}
+	if env.Error == nil {
+		t.Fatalf("missing error envelope: %s", out)
+	}
+	return env.Error
+}
+
+func argsNeedAutoConfirm(args []string) bool {
+	if !argsUseJSON(args) || hasFlag(args, "dry-run") || hasFlag(args, "confirm") || hasFlag(args, "force") {
+		return false
+	}
+	tokens := commandTokens(args)
+	return tokensAreWriteCommand(tokens)
+}
+
+func argsUseJSON(args []string) bool {
+	for i, arg := range args {
+		if arg == "--json" {
+			return true
+		}
+		if arg == "--format" && i+1 < len(args) {
+			return args[i+1] == "json"
+		}
+		if strings.HasPrefix(arg, "--format=") {
+			return strings.TrimPrefix(arg, "--format=") == "json"
+		}
+	}
+	return true
+}
+
+func hasFlag(args []string, name string) bool {
+	long := "--" + name
+	prefix := long + "="
+	for _, arg := range args {
+		if arg == long || strings.HasPrefix(arg, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func commandTokens(args []string) []string {
+	var tokens []string
+	skipNext := false
+	for _, arg := range args {
+		if skipNext {
+			skipNext = false
+			continue
+		}
+		if arg == "--format" || arg == "--confirm" {
+			skipNext = true
+			continue
+		}
+		if strings.HasPrefix(arg, "-") {
+			continue
+		}
+		tokens = append(tokens, arg)
+		if tokensAreWriteCommand(tokens) {
+			return tokens
+		}
+	}
+	return tokens
+}
+
+func tokensAreWriteCommand(tokens []string) bool {
+	if len(tokens) == 1 {
+		switch tokens[0] {
+		case "login", "logout", "install-skill", "update":
+			return true
+		}
+	}
+	if len(tokens) < 2 {
+		return false
+	}
+	switch tokens[0] {
+	case "filter":
+		return tokens[1] == "create" || tokens[1] == "delete"
+	case "sprint":
+		switch tokens[1] {
+		case "create", "update", "close", "move":
+			return true
+		}
+	case "issue":
+		switch tokens[1] {
+		case "create", "edit", "delete", "assign", "unassign", "watch", "unwatch", "vote", "unvote",
+			"transition", "bulk-transition", "link", "unlink", "remote-link", "clone", "attach":
+			return true
+		case "comment":
+			return len(tokens) >= 3 && (tokens[2] == "add" || tokens[2] == "delete")
+		case "worklog":
+			return len(tokens) >= 3 && tokens[2] == "add"
+		}
+	}
+	return false
 }
 
 // containsAny reports whether s contains any of the substrings.

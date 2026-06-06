@@ -197,7 +197,21 @@ var issueCreateCmd = &cobra.Command{
 			fields.Parent = &api.KeyRef{Key: parent}
 		}
 
-		if dryRunOutput("create issue", map[string]any{"project": project, "summary": summary, "type": issueType}) {
+		customFields, _ := cmd.Flags().GetStringSlice("field")
+		createDetail := map[string]any{
+			"project":      project,
+			"summary":      summary,
+			"type":         issueType,
+			"description":  description,
+			"assignee":     assignee,
+			"priority":     priority,
+			"labels":       stableStringSlice(labels),
+			"component":    component,
+			"fixVersion":   fixVersion,
+			"parent":       parent,
+			"customFields": stableStringSlice(customFields),
+		}
+		if dryRunOutput("create issue", createDetail) {
 			return nil
 		}
 
@@ -207,7 +221,6 @@ var issueCreateCmd = &cobra.Command{
 		}
 
 		// Handle custom fields
-		customFields, _ := cmd.Flags().GetStringSlice("field")
 		if len(customFields) > 0 {
 			editBody := map[string]any{
 				"fields": map[string]any{},
@@ -265,13 +278,16 @@ var issueEditCmd = &cobra.Command{
 			return err
 		}
 		var fields api.EditIssueFields
+		editFields := map[string]any{}
 		hasUpdate := false
 		if s, _ := cmd.Flags().GetString("summary"); s != "" {
 			fields.Summary = s
+			editFields["summary"] = s
 			hasUpdate = true
 		}
 		if d, _ := cmd.Flags().GetString("description"); d != "" {
 			fields.Description = d
+			editFields["description"] = d
 			hasUpdate = true
 		}
 		if a, _ := cmd.Flags().GetString("assignee"); a != "" {
@@ -280,22 +296,27 @@ var issueEditCmd = &cobra.Command{
 				return err
 			}
 			fields.Assignee = &api.NameRef{Name: username}
+			editFields["assignee"] = username
 			hasUpdate = true
 		}
 		if p, _ := cmd.Flags().GetString("priority"); p != "" {
 			fields.Priority = &api.NameRef{Name: p}
+			editFields["priority"] = p
 			hasUpdate = true
 		}
 		if labels, _ := cmd.Flags().GetStringSlice("label"); len(labels) > 0 {
 			fields.Labels = labels
+			editFields["labels"] = stableStringSlice(labels)
 			hasUpdate = true
 		}
 		if c, _ := cmd.Flags().GetString("component"); c != "" {
 			fields.Components = []api.NameRef{{Name: c}}
+			editFields["component"] = c
 			hasUpdate = true
 		}
 		if fv, _ := cmd.Flags().GetString("fix-version"); fv != "" {
 			fields.FixVersions = []api.NameRef{{Name: fv}}
+			editFields["fixVersion"] = fv
 			hasUpdate = true
 		}
 		customFields, _ := cmd.Flags().GetStringSlice("field")
@@ -307,7 +328,12 @@ var issueEditCmd = &cobra.Command{
 			return SilentErr(ExitBadArgs)
 		}
 
-		if dryRunOutput("edit issue", map[string]any{"key": args[0]}) {
+		editDetail := map[string]any{
+			"key":          args[0],
+			"fields":       editFields,
+			"customFields": stableStringSlice(customFields),
+		}
+		if dryRunOutput("edit issue", editDetail) {
 			return nil
 		}
 
@@ -360,12 +386,8 @@ var issueDeleteCmd = &cobra.Command{
 		if dryRunOutput("delete issue", map[string]any{"key": key}) {
 			return nil
 		}
-		if !confirmAction(fmt.Sprintf("Type the issue key to confirm deletion (%s)", key), key) {
-			if jsonMode {
-				output.PrintErrorJSONWithCode("Deletion cancelled.", 0, output.ErrValidation)
-			} else {
-				output.Warn("Deletion cancelled.")
-			}
+		if !jsonMode && !confirmAction(fmt.Sprintf("Type the issue key to confirm deletion (%s)", key), key) {
+			output.Warn("Deletion cancelled.")
 			return SilentErr(ExitBadArgs)
 		}
 		if err := client.Issues.Delete(key); err != nil {
@@ -498,4 +520,11 @@ func formatTime(t string) string {
 func mustGetString(cmd *cobra.Command, name string) string {
 	v, _ := cmd.Flags().GetString(name)
 	return v
+}
+
+func stableStringSlice(values []string) []string {
+	if len(values) == 0 {
+		return []string{}
+	}
+	return append([]string{}, values...)
 }

@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"io"
 	"os"
@@ -372,9 +371,7 @@ func TestPrintIssueJSON_Flat(t *testing.T) {
 		printIssueJSON(issue, false, nil)
 	})
 	var fi output.FlatIssue
-	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &fi); err != nil {
-		t.Fatalf("not valid JSON: %v", err)
-	}
+	decodeEnvelopeData(t, out, &fi)
 	if fi.Key != "TEST-1" || fi.Status != "Open" {
 		t.Errorf("unexpected flat issue: %+v", fi)
 	}
@@ -393,9 +390,7 @@ func TestPrintIssueJSON_Raw(t *testing.T) {
 		printIssueJSON(issue, true, nil)
 	})
 	var raw api.Issue
-	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &raw); err != nil {
-		t.Fatalf("not valid JSON: %v", err)
-	}
+	decodeEnvelopeData(t, out, &raw)
 	if raw.Key != "TEST-1" {
 		t.Errorf("raw key = %q, want TEST-1", raw.Key)
 	}
@@ -415,9 +410,7 @@ func TestPrintIssueJSON_Fields(t *testing.T) {
 		printIssueJSON(issue, false, []string{"key", "assignee"})
 	})
 	var m map[string]any
-	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &m); err != nil {
-		t.Fatalf("not valid JSON: %v", err)
-	}
+	decodeEnvelopeData(t, out, &m)
 	if m["key"] != "TEST-1" {
 		t.Errorf("key = %v", m["key"])
 	}
@@ -438,9 +431,7 @@ func TestPrintIssuesJSON_Flat(t *testing.T) {
 		printIssuesJSON(issues, false, nil)
 	})
 	var flat []output.FlatIssue
-	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &flat); err != nil {
-		t.Fatalf("not valid JSON: %v", err)
-	}
+	decodeEnvelopeData(t, out, &flat)
 	if len(flat) != 2 {
 		t.Fatalf("expected 2 issues, got %d", len(flat))
 	}
@@ -486,17 +477,18 @@ func TestDryRunOutput_JSON(t *testing.T) {
 		dryRunOutput("edit issue", map[string]any{"key": "TEST-1"})
 	})
 	var m map[string]any
-	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &m); err != nil {
-		t.Fatalf("not valid JSON: %v", err)
+	decodeEnvelopeData(t, out, &m)
+	preview := m["preview"].(map[string]any)
+	if preview["action"] != "edit issue" {
+		t.Errorf("action = %v", preview["action"])
 	}
-	if m["action"] != "edit issue" {
-		t.Errorf("action = %v", m["action"])
+	if m["confirm_token"] == "" {
+		t.Errorf("confirm_token = %v", m["confirm_token"])
 	}
-	if m["dryRun"] != true {
-		t.Errorf("dryRun = %v", m["dryRun"])
-	}
-	if m["key"] != "TEST-1" {
-		t.Errorf("key = %v", m["key"])
+	changes := preview["changes"].([]any)
+	target := changes[0].(map[string]any)["target"].(map[string]any)
+	if target["key"] != "TEST-1" {
+		t.Errorf("key = %v", target["key"])
 	}
 }
 

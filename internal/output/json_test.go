@@ -85,61 +85,69 @@ func TestHintForErrorCode(t *testing.T) {
 }
 
 func TestPrintJSON_MarshalError(t *testing.T) {
-	out := captureStderr(t, func() {
+	out := captureStdout(t, func() {
 		PrintJSON(marshalFail{})
 	})
-	if !strings.Contains(out, "json marshal error:") || !strings.Contains(out, "marshal failed") {
+	if !strings.Contains(out, `"ok": false`) || !strings.Contains(out, "marshal failed") {
 		t.Errorf("PrintJSON marshal error: got %q", out)
 	}
 }
 
 func TestPrintErrorJSON(t *testing.T) {
 	t.Run("with status", func(t *testing.T) {
-		out := captureStderr(t, func() {
+		out := captureStdout(t, func() {
 			PrintErrorJSON("not found", 404)
 		})
 		var payload map[string]any
 		if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &payload); err != nil {
 			t.Fatalf("invalid JSON: %v\nout: %s", err, out)
 		}
-		if payload["error"] != "not found" {
-			t.Errorf("error = %v", payload["error"])
+		errPayload := payload["error"].(map[string]any)
+		if errPayload["message"] != "not found" {
+			t.Errorf("message = %v", errPayload["message"])
 		}
-		if payload["errorCode"] != string(ErrNotFound) {
-			t.Errorf("errorCode = %v, want %s", payload["errorCode"], ErrNotFound)
+		if errPayload["code"] != string(ErrNotFound) {
+			t.Errorf("code = %v, want %s", errPayload["code"], ErrNotFound)
 		}
-		if payload["hint"] == "" {
+		details := errPayload["details"].(map[string]any)
+		if details["hint"] == "" {
 			t.Error("expected non-empty hint for 404")
 		}
 	})
 
 	t.Run("status zero uses unknown", func(t *testing.T) {
-		out := captureStderr(t, func() {
+		out := captureStdout(t, func() {
 			PrintErrorJSON("oops", 0)
 		})
 		var payload map[string]any
 		if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &payload); err != nil {
 			t.Fatalf("invalid JSON: %v", err)
 		}
-		if payload["errorCode"] != string(ErrUnknown) {
-			t.Errorf("errorCode = %v, want %s", payload["errorCode"], ErrUnknown)
+		errPayload := payload["error"].(map[string]any)
+		if errPayload["code"] != string(ErrUnknown) {
+			t.Errorf("code = %v, want %s", errPayload["code"], ErrUnknown)
 		}
 	})
 }
 
 func TestPrintErrorJSONWithCode(t *testing.T) {
-	out := captureStderr(t, func() {
+	out := captureStdout(t, func() {
 		PrintErrorJSONWithCode("network down", 0, ErrNetwork)
 	})
 	var payload map[string]any
 	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &payload); err != nil {
 		t.Fatalf("invalid JSON: %v\nout: %s", err, out)
 	}
-	if payload["errorCode"] != string(ErrNetwork) {
-		t.Errorf("errorCode = %v, want %s", payload["errorCode"], ErrNetwork)
+	errPayload := payload["error"].(map[string]any)
+	if errPayload["code"] != string(ErrNetwork) {
+		t.Errorf("code = %v, want %s", errPayload["code"], ErrNetwork)
 	}
-	if payload["hint"] != HintForErrorCode(ErrNetwork) {
-		t.Errorf("hint = %v", payload["hint"])
+	if errPayload["retryable"] != true {
+		t.Errorf("retryable = %v", errPayload["retryable"])
+	}
+	details := errPayload["details"].(map[string]any)
+	if details["hint"] != HintForErrorCode(ErrNetwork) {
+		t.Errorf("hint = %v", details["hint"])
 	}
 }
 
@@ -150,10 +158,10 @@ func TestPrintErrorJSON_MarshalFallback(t *testing.T) {
 	}
 	t.Cleanup(func() { jsonMarshalIndent = old })
 
-	out := captureStderr(t, func() {
+	out := captureStdout(t, func() {
 		PrintErrorJSON("boom", 500)
 	})
-	if !strings.Contains(out, `"error": "boom"`) || !strings.Contains(out, string(ErrServer)) {
+	if !strings.Contains(out, `"message":"boom"`) || !strings.Contains(out, string(ErrServer)) {
 		t.Errorf("PrintErrorJSON fallback: got %q", out)
 	}
 }
@@ -165,10 +173,10 @@ func TestPrintErrorJSONWithCode_MarshalFallback(t *testing.T) {
 	}
 	t.Cleanup(func() { jsonMarshalIndent = old })
 
-	out := captureStderr(t, func() {
+	out := captureStdout(t, func() {
 		PrintErrorJSONWithCode("bad", 0, ErrConfig)
 	})
-	if !strings.Contains(out, `"error": "bad"`) || !strings.Contains(out, string(ErrConfig)) {
+	if !strings.Contains(out, `"message":"bad"`) || !strings.Contains(out, string(ErrConfig)) {
 		t.Errorf("PrintErrorJSONWithCode fallback: got %q", out)
 	}
 }

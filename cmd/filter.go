@@ -117,6 +117,9 @@ var filterCreateCmd = &cobra.Command{
 			return SilentErr(ExitBadArgs)
 		}
 		description, _ := cmd.Flags().GetString("description")
+		if dryRunOutput("create filter", map[string]any{"name": name, "jql": jql, "description": description}) {
+			return nil
+		}
 		filter, err := client.Filters.Create(name, jql, description)
 		if err != nil {
 			return handleAPIError(err, jsonMode)
@@ -138,6 +141,9 @@ var filterDeleteCmd = &cobra.Command{
 		client, _, err := newClient()
 		if err != nil {
 			return err
+		}
+		if dryRunOutput("delete filter", map[string]any{"filterId": args[0]}) {
+			return nil
 		}
 		if err := client.Filters.Delete(args[0]); err != nil {
 			return handleAPIError(err, jsonMode)

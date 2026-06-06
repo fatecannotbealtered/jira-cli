@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-06-06
+
+### Added
+
+- **Agent JSON envelope** — default JSON success and failure responses now share a stable envelope: `ok`, `schema_version`, `data`/`error`, and `meta.duration_ms`.
+- **Confirm-token write flow** — JSON write commands now support the non-interactive `--dry-run` → `--confirm <token>` flow. Dry-run responses include a change preview, `confirm_token`, and `expires_at`; execution validates that the token still matches the operation.
+- **Self-description commands** — added `context`, and expanded `reference` and `doctor` output for agent discovery and environment checks.
+- **Structured error taxonomy** — error envelopes now include stable `E_*` codes and `retryable` hints for automated retry decisions.
+
+### Changed
+
+- **JSON is the agent contract** — stdout now contains exactly one JSON document for normal command responses; human-readable output requires `--format text`.
+- **Error JSON moved to stdout** — machine-readable failures now use the same stdout channel and envelope shape as successes. Progress, prompts, warnings, and text-mode errors remain on stderr.
+- **Exit code semantics** — exit codes now follow the agent contract: `2` bad args, `3` not found, `4` auth/permission, `5` confirmation required, `6` conflict, `7` retryable transient failure, `8` timeout.
+- **Interactive login is text-only** — default JSON mode requires `jira-cli login --host <url> --token <pat>`; interactive login requires `--format text`.
+- **`doctor` output** — JSON output now reports a `checks` list with `check`, `status`, `message`, and `fix` fields instead of the old `authValid` shape.
+
+### Fixed
+
+- **JSON write safety** — confirmed JSON writes no longer fall through to stdin prompts after token validation.
+- **Stable confirmation hashing** — write-command confirm tokens include the full operation details and stable slice handling in tests.
+
 ## [1.0.6] - 2026-06-05
 
 ### Added
@@ -137,7 +159,8 @@ Initial release of jira-cli for Jira Data Center.
 - SKILL.md with JSON output schemas, error codes, exit codes, and complete flag reference.
 - GitHub PR template for contributors.
 
-[Unreleased]: https://github.com/fatecannotbealtered/jira-cli/compare/v1.0.6...HEAD
+[Unreleased]: https://github.com/fatecannotbealtered/jira-cli/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/fatecannotbealtered/jira-cli/compare/v1.0.6...v1.1.0
 [1.0.6]: https://github.com/fatecannotbealtered/jira-cli/compare/v1.0.5...v1.0.6
 [1.0.5]: https://github.com/fatecannotbealtered/jira-cli/compare/v1.0.4...v1.0.5
 [1.0.4]: https://github.com/fatecannotbealtered/jira-cli/compare/v1.0.3...v1.0.4

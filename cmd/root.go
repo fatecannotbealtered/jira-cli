@@ -1,7 +1,10 @@
 package cmd
 
 import (
+	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -18,13 +21,19 @@ import (
 
 // Exit codes for machine-readable error classification.
 const (
-	ExitOK        = 0
-	ExitBadArgs   = 2
-	ExitAuth      = 3
-	ExitNotFound  = 4
-	ExitForbidden = 5
-	ExitRateLimit = 6
-	ExitNetwork   = 7
+	ExitOK              = 0
+	ExitGeneric         = 1
+	ExitBadArgs         = 2
+	ExitNotFound        = 3
+	ExitAuth            = 4
+	ExitConfirmRequired = 5
+	ExitConflict        = 6
+	ExitRetryable       = 7
+	ExitTimeout         = 8
+
+	ExitForbidden = ExitAuth
+	ExitRateLimit = ExitRetryable
+	ExitNetwork   = ExitRetryable
 )
 
 // ErrSilent indicates the error has been printed; cobra should not print again.
@@ -59,6 +68,9 @@ var quietMode bool
 
 // dryRun is the global --dry-run flag.
 var dryRun bool
+
+// confirmToken is the global --confirm token for executing write commands.
+var confirmToken string
 
 // lastExit tracks the exit code for the current command execution.
 var lastExit int
@@ -105,6 +117,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&forceMode, "force", false, "Skip confirmation prompts")
 	rootCmd.PersistentFlags().BoolVar(&quietMode, "quiet", false, "Suppress auxiliary text output (does not suppress json/raw results)")
 	rootCmd.PersistentFlags().BoolVar(&dryRun, "dry-run", false, "Show what would be done without executing")
+	rootCmd.PersistentFlags().StringVar(&confirmToken, "confirm", "", "Confirmation token returned by --dry-run for write commands")
 
 	cobra.OnInitialize(func() {
 		output.Quiet = false
@@ -113,6 +126,7 @@ func init() {
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		lastExit = 0
 		cmdStartTime = time.Now()
+		output.CommandStartTime = cmdStartTime
 		execCmd = cmd
 		if err := configureOutputMode(cmd); err != nil {
 			return err
@@ -158,6 +172,7 @@ func configureOutputMode(cmd *cobra.Command) error {
 	outputFormat = effectiveFormat
 	jsonMode = effectiveFormat != outputFormatText
 	output.CompactJSON = compactMode && effectiveFormat == outputFormatJSON
+	output.EnvelopeJSON = effectiveFormat == outputFormatJSON
 	output.ErrorJSON = effectiveFormat != outputFormatText
 	output.Quiet = effectiveFormat != outputFormatText || quietMode
 	return nil
@@ -207,6 +222,9 @@ func Execute() error {
 	err := rootCmd.Execute()
 	if err != nil && !errors.Is(err, ErrSilent) {
 		err = handleCommandError(err)
+	}
+	if err == nil && lastExit != ExitOK {
+		err = ErrSilent
 	}
 	if execCmd != nil && isWriteCommand(execCmd) {
 		duration := time.Since(cmdStartTime)
@@ -289,6 +307,8 @@ func handleAPIError(err error, jsonMode bool) error {
 // exitCodeForStatus maps HTTP status codes to semantic exit codes.
 func exitCodeForStatus(status int) int {
 	switch {
+	case status == 408:
+		return ExitTimeout
 	case status == 401:
 		return ExitAuth
 	case status == 403:
@@ -331,17 +351,116 @@ func confirmAction(prompt, expected string) bool {
 // dryRunOutput outputs a dry-run message and returns true if --dry-run is set.
 // Machine-readable formats output JSON; text format outputs a human-readable note.
 func dryRunOutput(action string, detail map[string]any) bool {
-	if !dryRun {
-		return false
+	if detail == nil {
+		detail = map[string]any{}
 	}
 	if jsonMode {
-		detail["action"] = action
-		detail["dryRun"] = true
-		output.PrintJSON(detail)
+		if dryRun {
+			expiresAt := time.Now().UTC().Add(15 * time.Minute)
+			output.PrintJSON(map[string]any{
+				"preview": map[string]any{
+					"action":  action,
+					"changes": []map[string]any{{"operation": action, "target": detail}},
+				},
+				"confirm_token": generateConfirmToken(action, detail, expiresAt),
+				"expires_at":    expiresAt.Format(time.RFC3339),
+			})
+			return true
+		}
+		if shouldEnforceConfirmToken() {
+			if confirmToken == "" {
+				output.PrintErrorJSONWithCode("write command requires --confirm token; run with --dry-run first", 0, output.ErrConfirmRequired)
+				setExitCode(ExitConfirmRequired)
+				return true
+			}
+			if err := validateConfirmToken(action, detail, confirmToken, time.Now().UTC()); err != nil {
+				output.PrintErrorJSONWithCode(err.Error(), 0, output.ErrConflict)
+				setExitCode(ExitConflict)
+				return true
+			}
+		}
 	} else {
-		output.Info("[dry-run] " + action)
+		if dryRun {
+			output.Info("[dry-run] " + action)
+			return true
+		}
 	}
-	return true
+	return false
+}
+
+func shouldEnforceConfirmToken() bool {
+	return execCmd != nil && isWriteCommand(execCmd)
+}
+
+func currentCommandPath() string {
+	if execCmd != nil {
+		return execCmd.CommandPath()
+	}
+	return ""
+}
+
+func confirmPayload(action string, detail map[string]any, expiresAt time.Time) map[string]any {
+	return map[string]any{
+		"schema_version": output.SchemaVersion,
+		"command":        currentCommandPath(),
+		"action":         action,
+		"details":        detail,
+		"expires_at":     expiresAt.UTC().Format(time.RFC3339),
+	}
+}
+
+func confirmDigest(action string, detail map[string]any, expiresAt time.Time) (string, error) {
+	data, err := json.Marshal(confirmPayload(action, detail, expiresAt))
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:]), nil
+}
+
+func generateConfirmToken(action string, detail map[string]any, expiresAt time.Time) string {
+	digest, err := confirmDigest(action, detail, expiresAt)
+	if err != nil {
+		return "ct_invalid"
+	}
+	return fmt.Sprintf("ct_%d_%s", expiresAt.UTC().Unix(), digest[:32])
+}
+
+func validateConfirmToken(action string, detail map[string]any, token string, now time.Time) error {
+	parts := strings.Split(token, "_")
+	if len(parts) != 3 || parts[0] != "ct" {
+		return fmt.Errorf("invalid confirm token")
+	}
+	expiresUnix, err := parseConfirmTokenExpiry(parts[1])
+	if err != nil {
+		return fmt.Errorf("invalid confirm token")
+	}
+	expiresAt := time.Unix(expiresUnix, 0).UTC()
+	if now.After(expiresAt) {
+		return fmt.Errorf("confirm token expired")
+	}
+	digest, err := confirmDigest(action, detail, expiresAt)
+	if err != nil {
+		return fmt.Errorf("failed to validate confirm token: %w", err)
+	}
+	if parts[2] != digest[:32] {
+		return fmt.Errorf("confirm token does not match this operation")
+	}
+	return nil
+}
+
+func parseConfirmTokenExpiry(s string) (int64, error) {
+	var n int64
+	if s == "" {
+		return 0, fmt.Errorf("empty expiry")
+	}
+	for _, ch := range s {
+		if ch < '0' || ch > '9' {
+			return 0, fmt.Errorf("invalid expiry")
+		}
+		n = n*10 + int64(ch-'0')
+	}
+	return n, nil
 }
 
 // isWriteCommand returns true if the command has the "write" annotation.

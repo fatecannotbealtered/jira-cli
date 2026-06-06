@@ -227,7 +227,7 @@ var sprintCreateCmd = &cobra.Command{
 		if g, _ := cmd.Flags().GetString("goal"); g != "" {
 			req.Goal = g
 		}
-		if dryRunOutput("create sprint", map[string]any{"name": name, "boardId": boardID}) {
+		if dryRunOutput("create sprint", map[string]any{"name": name, "boardId": boardID, "request": req}) {
 			return nil
 		}
 		sprint, err := client.Sprints.Create(req)
@@ -269,7 +269,7 @@ var sprintUpdateCmd = &cobra.Command{
 		if ed, _ := cmd.Flags().GetString("end-date"); ed != "" {
 			req.EndDate = ed
 		}
-		if dryRunOutput("update sprint", map[string]any{"sprintId": sprintID}) {
+		if dryRunOutput("update sprint", map[string]any{"sprintId": sprintID, "request": req}) {
 			return nil
 		}
 		sprint, err := client.Sprints.Update(sprintID, req)

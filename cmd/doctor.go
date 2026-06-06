@@ -21,21 +21,28 @@ func init() {
 }
 
 func runDoctor(_ *cobra.Command, _ []string) error {
+	type doctorCheck struct {
+		Check   string `json:"check"`
+		Status  string `json:"status"`
+		Message string `json:"message,omitempty"`
+		Fix     string `json:"fix,omitempty"`
+	}
 	type doctorResult struct {
-		ConfigExists bool   `json:"configExists"`
-		AuthValid    bool   `json:"authValid"`
-		LatencyMs    int64  `json:"latencyMs"`
-		Host         string `json:"host,omitempty"`
-		Username     string `json:"username,omitempty"`
-		DisplayName  string `json:"displayName,omitempty"`
-		Error        string `json:"error,omitempty"`
+		Checks      []doctorCheck `json:"checks"`
+		Host        string        `json:"host,omitempty"`
+		Username    string        `json:"username,omitempty"`
+		DisplayName string        `json:"displayName,omitempty"`
+		LatencyMs   int64         `json:"latency_ms,omitempty"`
+	}
+	addCheck := func(result *doctorResult, check, status, msg, fix string) {
+		result.Checks = append(result.Checks, doctorCheck{Check: check, Status: status, Message: msg, Fix: fix})
 	}
 
 	result := doctorResult{}
 
 	cfg, err := config.Load()
 	if err != nil {
-		result.Error = err.Error()
+		addCheck(&result, "config", "fail", err.Error(), "fix or remove "+config.FilePath())
 		if jsonMode {
 			output.PrintJSON(result)
 		} else {
@@ -45,8 +52,7 @@ func runDoctor(_ *cobra.Command, _ []string) error {
 	}
 
 	if cfg.Host == "" || cfg.Token == "" {
-		result.ConfigExists = false
-		result.Error = "not configured: run 'jira-cli login' or set JIRA_HOST and JIRA_TOKEN"
+		addCheck(&result, "config", "fail", "Jira host/token not configured", "run 'jira-cli login --host <url> --token <pat>' or set JIRA_HOST and JIRA_TOKEN")
 		if jsonMode {
 			output.PrintJSON(result)
 		} else {
@@ -59,7 +65,7 @@ func runDoctor(_ *cobra.Command, _ []string) error {
 		}
 		return SilentErr(ExitAuth)
 	}
-	result.ConfigExists = true
+	addCheck(&result, "config", "pass", "configuration found", "")
 	result.Host = cfg.Host
 
 	client := api.NewClient(cfg)
@@ -69,8 +75,8 @@ func runDoctor(_ *cobra.Command, _ []string) error {
 	result.LatencyMs = latency
 
 	if err != nil {
-		result.AuthValid = false
-		result.Error = err.Error()
+		addCheck(&result, "auth", "fail", err.Error(), "check PAT validity, Jira permissions, proxy, or VPN")
+		addCheck(&result, "network", "fail", err.Error(), "set HTTP_PROXY/HTTPS_PROXY if required and verify Jira is reachable")
 		if jsonMode {
 			output.PrintJSON(result)
 		} else {
@@ -84,7 +90,8 @@ func runDoctor(_ *cobra.Command, _ []string) error {
 		return SilentErr(ExitAuth)
 	}
 
-	result.AuthValid = true
+	addCheck(&result, "auth", "pass", "PAT valid", "")
+	addCheck(&result, "network", "pass", fmt.Sprintf("connected in %dms", latency), "")
 	result.Username = myself.Name
 	result.DisplayName = myself.DisplayName
 

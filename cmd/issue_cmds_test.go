@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -24,16 +25,18 @@ func resetCLIState(t *testing.T) {
 	compactMode = false
 	dryRun = false
 	forceMode = false
+	confirmToken = ""
 	quietMode = false
 	output.CompactJSON = false
 	output.ErrorJSON = false
+	output.EnvelopeJSON = true
 	output.Quiet = false
 	lastExit = 0
 	var reset func(*cobra.Command)
 	reset = func(cmd *cobra.Command) {
 		cmd.Flags().VisitAll(func(f *pflag.Flag) {
-			if f.Value.Type() == "stringSlice" {
-				_ = f.Value.Set("")
+			if sliceValue, ok := f.Value.(pflag.SliceValue); ok {
+				_ = sliceValue.Replace(defaultSliceFlagValue(t, f))
 			} else {
 				_ = f.Value.Set(f.DefValue)
 			}
@@ -44,6 +47,19 @@ func resetCLIState(t *testing.T) {
 		}
 	}
 	reset(rootCmd)
+	resetFlagValue(rootCmd.PersistentFlags(), "confirm", "")
+}
+
+func defaultSliceFlagValue(t *testing.T, f *pflag.Flag) []string {
+	t.Helper()
+	if f.DefValue == "" || f.DefValue == "[]" {
+		return []string{}
+	}
+	values, err := csv.NewReader(strings.NewReader(f.DefValue)).Read()
+	if err != nil {
+		t.Fatalf("parse default for --%s: %v", f.Name, err)
+	}
+	return values
 }
 
 func issueRunRoot(t *testing.T, args ...string) (stdout, stderr string, err error) {
@@ -515,6 +531,18 @@ func TestIssueDelete(t *testing.T) {
 		stdout, _ := issueRunOK(t, "--force", "issue", "delete", sampleIssueKey)
 		if !containsAny(stdout, "Deleted PROJ-1") {
 			t.Fatalf("stdout=%q", stdout)
+		}
+	})
+
+	t.Run("json confirmed", func(t *testing.T) {
+		resetCLIState(t)
+		token := dryRunConfirmToken(t, "--json", "issue", "delete", sampleIssueKey)
+		resetCLIState(t)
+		stdout, _ := runRootOK(t, "--confirm", token, "--json", "issue", "delete", sampleIssueKey)
+		var result map[string]string
+		decodeEnvelopeData(t, stdout, &result)
+		if result["key"] != sampleIssueKey || result["status"] != "deleted" {
+			t.Fatalf("result=%v stdout=%s", result, stdout)
 		}
 	})
 }
@@ -1058,6 +1086,9 @@ func TestIssueCommands_NotConfigured_AllRunE(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			clearJiraEnv(t)
+			tmpHome := t.TempDir()
+			t.Setenv("HOME", tmpHome)
+			t.Setenv("USERPROFILE", tmpHome)
 			args := tc.args
 			if tc.name == "attach" {
 				args = []string{"issue", "attach", sampleIssueKey, "--file", writeTempFile(t, "x.txt", "x")}
