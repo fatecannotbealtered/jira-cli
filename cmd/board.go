@@ -51,7 +51,7 @@ var boardListCmd = &cobra.Command{
 			return handleAPIError(err, jsonMode)
 		}
 		if jsonMode {
-			output.PrintJSON(boards)
+			output.PrintJSON(toFlatBoards(boards))
 			return nil
 		}
 		if len(boards) == 0 {
@@ -91,7 +91,7 @@ var boardGetCmd = &cobra.Command{
 			return handleAPIError(err, jsonMode)
 		}
 		if jsonMode {
-			output.PrintJSON(board)
+			output.PrintJSON(toFlatBoard(board))
 			return nil
 		}
 		fmt.Println()
@@ -124,7 +124,7 @@ var boardBacklogCmd = &cobra.Command{
 			issues = issues[:limit]
 		}
 		if jsonMode {
-			output.PrintJSON(issues)
+			printIssuesJSON(issues, false, nil)
 			return nil
 		}
 		if len(issues) == 0 {
@@ -159,7 +159,7 @@ var boardEpicsCmd = &cobra.Command{
 			epics = epics[:limit]
 		}
 		if jsonMode {
-			output.PrintJSON(epics)
+			printIssuesJSON(epics, false, nil)
 			return nil
 		}
 		if len(epics) == 0 {
@@ -190,7 +190,7 @@ var boardSprintsCmd = &cobra.Command{
 			return handleAPIError(err, jsonMode)
 		}
 		if jsonMode {
-			output.PrintJSON(sprints)
+			printSprintsJSON(sprints, false, nil)
 			return nil
 		}
 		if len(sprints) == 0 {

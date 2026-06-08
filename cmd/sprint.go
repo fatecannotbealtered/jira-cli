@@ -227,7 +227,7 @@ var sprintCreateCmd = &cobra.Command{
 		if g, _ := cmd.Flags().GetString("goal"); g != "" {
 			req.Goal = g
 		}
-		if dryRunOutput("create sprint", map[string]any{"name": name, "boardId": boardID, "request": req}) {
+		if dryRunOutput("create sprint", map[string]any{"name": name, "boardId": fmt.Sprintf("%d", boardID), "request": req}) {
 			return nil
 		}
 		sprint, err := client.Sprints.Create(req)
@@ -235,7 +235,7 @@ var sprintCreateCmd = &cobra.Command{
 			return handleAPIError(err, jsonMode)
 		}
 		if jsonMode {
-			output.PrintJSON(sprint)
+			output.PrintJSON(toFlatSprint(sprint))
 			return nil
 		}
 		output.Success(fmt.Sprintf("Created sprint: %s (ID: %d)", sprint.Name, sprint.ID))
@@ -269,7 +269,7 @@ var sprintUpdateCmd = &cobra.Command{
 		if ed, _ := cmd.Flags().GetString("end-date"); ed != "" {
 			req.EndDate = ed
 		}
-		if dryRunOutput("update sprint", map[string]any{"sprintId": sprintID, "request": req}) {
+		if dryRunOutput("update sprint", map[string]any{"sprintId": fmt.Sprintf("%d", sprintID), "request": req}) {
 			return nil
 		}
 		sprint, err := client.Sprints.Update(sprintID, req)
@@ -277,7 +277,7 @@ var sprintUpdateCmd = &cobra.Command{
 			return handleAPIError(err, jsonMode)
 		}
 		if jsonMode {
-			output.PrintJSON(sprint)
+			output.PrintJSON(toFlatSprint(sprint))
 			return nil
 		}
 		output.Success(fmt.Sprintf("Updated sprint: %s (ID: %d)", sprint.Name, sprint.ID))
@@ -304,20 +304,20 @@ var sprintCloseCmd = &cobra.Command{
 		}
 		if sprint.State == "closed" {
 			if jsonMode {
-				output.PrintJSON(map[string]any{"sprintId": sprintID, "state": "closed", "changed": false})
+				output.PrintJSON(map[string]any{"sprintId": fmt.Sprintf("%d", sprintID), "state": "closed", "changed": false})
 				return nil
 			}
 			output.Info("Sprint is already closed.")
 			return nil
 		}
-		if dryRunOutput("close sprint", map[string]any{"sprintId": sprintID, "name": sprint.Name}) {
+		if dryRunOutput("close sprint", map[string]any{"sprintId": fmt.Sprintf("%d", sprintID), "name": sprint.Name, "state": sprint.State}) {
 			return nil
 		}
 		if err := client.Sprints.Close(sprintID); err != nil {
 			return handleAPIError(err, jsonMode)
 		}
 		if jsonMode {
-			output.PrintJSON(map[string]any{"sprintId": sprintID, "state": "closed"})
+			output.PrintJSON(map[string]any{"sprintId": fmt.Sprintf("%d", sprintID), "state": "closed"})
 			return nil
 		}
 		output.Success(fmt.Sprintf("Sprint %d closed", sprintID))
@@ -343,14 +343,14 @@ var sprintMoveCmd = &cobra.Command{
 		for i, k := range issueKeys {
 			issueKeys[i] = strings.TrimSpace(k)
 		}
-		if dryRunOutput("move issues to sprint", map[string]any{"sprintId": sprintID, "issues": issueKeys}) {
+		if dryRunOutput("move issues to sprint", map[string]any{"sprintId": fmt.Sprintf("%d", sprintID), "issues": issueKeys}) {
 			return nil
 		}
 		if err := client.Sprints.MoveIssues(sprintID, issueKeys); err != nil {
 			return handleAPIError(err, jsonMode)
 		}
 		if jsonMode {
-			output.PrintJSON(map[string]any{"sprintId": sprintID, "issues": issueKeys})
+			output.PrintJSON(map[string]any{"sprintId": fmt.Sprintf("%d", sprintID), "issues": issueKeys})
 			return nil
 		}
 		output.Success(fmt.Sprintf("Moved %d issue(s) to sprint %d", len(issueKeys), sprintID))

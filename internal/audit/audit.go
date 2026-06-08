@@ -22,6 +22,7 @@ type entry struct {
 	Ts   string   `json:"ts"`
 	Cmd  string   `json:"cmd"`
 	Args []string `json:"args"`
+	Host string   `json:"host,omitempty"`
 	Exit int      `json:"exit"`
 	Ms   int64    `json:"ms"`
 }
@@ -53,11 +54,14 @@ func Log(cmdPath string, args []string, exitCode int, durationMs int64) {
 	cleanup(dir)
 
 	e := entry{
-		Ts:   time.Now().Format(time.RFC3339Nano),
+		Ts:   time.Now().UTC().Format(time.RFC3339Nano),
 		Cmd:  cmdPath,
 		Args: sanitizeArgs(args),
 		Exit: exitCode,
 		Ms:   durationMs,
+	}
+	if cfg, err := config.Load(); err == nil {
+		e.Host = cfg.Host
 	}
 
 	data, err := auditJSONMarshal(e)
@@ -66,7 +70,7 @@ func Log(cmdPath string, args []string, exitCode int, durationMs int64) {
 	}
 	data = append(data, '\n')
 
-	filename := "audit-" + time.Now().Format("2006-01") + ".jsonl"
+	filename := "audit-" + time.Now().UTC().Format("2006-01") + ".jsonl"
 	path := filepath.Join(dir, filename)
 
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)

@@ -43,7 +43,7 @@ var epicListCmd = &cobra.Command{
 			return handleAPIError(err, jsonMode)
 		}
 		if jsonMode {
-			output.PrintJSON(epics)
+			printIssuesJSON(epics, false, nil)
 			return nil
 		}
 		if len(epics) == 0 {
@@ -79,7 +79,7 @@ var epicIssuesCmd = &cobra.Command{
 					issues, err := client.Boards.GetEpicIssues(epic.ID)
 					if err == nil {
 						if jsonMode {
-							output.PrintJSON(issues)
+							printIssuesJSON(issues, false, nil)
 							return nil
 						}
 						if len(issues) == 0 {
@@ -106,7 +106,7 @@ var epicIssuesCmd = &cobra.Command{
 			}
 		}
 		if jsonMode {
-			output.PrintJSON(result.Issues)
+			printIssuesJSON(result.Issues, false, nil)
 			return nil
 		}
 		if len(result.Issues) == 0 {

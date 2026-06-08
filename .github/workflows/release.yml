@@ -103,7 +103,10 @@ jobs:
           registry-url: "https://registry.npmjs.org"
 
       - name: Verify package contents
-        run: npm pack --dry-run
+        run: |
+          npm ci --ignore-scripts
+          npm audit --audit-level=high
+          npm pack --dry-run
 
       - name: Verify version consistency
         run: |

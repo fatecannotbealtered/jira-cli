@@ -348,7 +348,7 @@ func TestToFlatSprint(t *testing.T) {
 		Goal:      "Ship v1",
 	}
 	fs := toFlatSprint(sprint)
-	if fs.ID != 42 || fs.Name != "Sprint 1" || fs.State != "active" {
+	if fs.ID != "42" || fs.Name != "Sprint 1" || fs.State != "active" {
 		t.Errorf("unexpected flat sprint: %+v", fs)
 	}
 	if fs.Goal != "Ship v1" {

@@ -16,6 +16,8 @@ var doctorCmd = &cobra.Command{
 	RunE:  runDoctor,
 }
 
+const skillMinVersion = "1.1.0"
+
 func init() {
 	rootCmd.AddCommand(doctorCmd)
 }
@@ -39,10 +41,18 @@ func runDoctor(_ *cobra.Command, _ []string) error {
 	}
 
 	result := doctorResult{}
+	addVersionCheck := func() {
+		if versionMeetsMinimum(version, skillMinVersion) {
+			addCheck(&result, "version", "pass", "binary satisfies bundled skill minimum "+skillMinVersion, "")
+		} else {
+			addCheck(&result, "version", "fail", "binary version "+version+" is below bundled skill minimum "+skillMinVersion, "run 'jira-cli update --check' or reinstall from npm")
+		}
+	}
 
 	cfg, err := config.Load()
 	if err != nil {
 		addCheck(&result, "config", "fail", err.Error(), "fix or remove "+config.FilePath())
+		addVersionCheck()
 		if jsonMode {
 			output.PrintJSON(result)
 		} else {
@@ -53,6 +63,7 @@ func runDoctor(_ *cobra.Command, _ []string) error {
 
 	if cfg.Host == "" || cfg.Token == "" {
 		addCheck(&result, "config", "fail", "Jira host/token not configured", "run 'jira-cli login --host <url> --token <pat>' or set JIRA_HOST and JIRA_TOKEN")
+		addVersionCheck()
 		if jsonMode {
 			output.PrintJSON(result)
 		} else {
@@ -77,6 +88,7 @@ func runDoctor(_ *cobra.Command, _ []string) error {
 	if err != nil {
 		addCheck(&result, "auth", "fail", err.Error(), "check PAT validity, Jira permissions, proxy, or VPN")
 		addCheck(&result, "network", "fail", err.Error(), "set HTTP_PROXY/HTTPS_PROXY if required and verify Jira is reachable")
+		addVersionCheck()
 		if jsonMode {
 			output.PrintJSON(result)
 		} else {
@@ -92,6 +104,7 @@ func runDoctor(_ *cobra.Command, _ []string) error {
 
 	addCheck(&result, "auth", "pass", "PAT valid", "")
 	addCheck(&result, "network", "pass", fmt.Sprintf("connected in %dms", latency), "")
+	addVersionCheck()
 	result.Username = myself.Name
 	result.DisplayName = myself.DisplayName
 
@@ -111,4 +124,13 @@ func runDoctor(_ *cobra.Command, _ []string) error {
 	output.Gray(fmt.Sprintf("  Latency: %dms", latency))
 	fmt.Println()
 	return nil
+}
+
+func versionMeetsMinimum(current, minimum string) bool {
+	current = normalizeVersion(current)
+	minimum = normalizeVersion(minimum)
+	if current == "" || current == "dev" || current == "(devel)" {
+		return true
+	}
+	return compareVersions(current, minimum) >= 0
 }

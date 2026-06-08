@@ -7,7 +7,7 @@ import (
 
 func TestFilterSprintFields_StartDateEndDate(t *testing.T) {
 	s := FlatSprint{
-		ID:        1,
+		ID:        "1",
 		Name:      "Sprint 1",
 		State:     "active",
 		StartDate: "2026-01-01",
@@ -33,7 +33,7 @@ func TestFilterSprintFields_StartDateEndDate(t *testing.T) {
 
 func TestFilterSprintFields_CaseInsensitive(t *testing.T) {
 	s := FlatSprint{
-		ID:        2,
+		ID:        "2",
 		Name:      "Sprint 2",
 		State:     "closed",
 		StartDate: "2026-02-01",
@@ -68,7 +68,7 @@ func TestFilterSprintFields_CaseInsensitive(t *testing.T) {
 		if len(result) != 3 {
 			t.Fatalf("expected 3 fields, got %d: %v", len(result), result)
 		}
-		if result["id"] != 2 {
+		if result["id"] != "2" {
 			t.Errorf("id = %v, want 2", result["id"])
 		}
 		if result["name"] != "Sprint 2" {
@@ -152,7 +152,7 @@ func TestFilterFields(t *testing.T) {
 }
 
 func TestLookupSprintField(t *testing.T) {
-	m := SprintToMap(FlatSprint{ID: 1, Name: "S1", State: "active", StartDate: "2026-01-01"})
+	m := SprintToMap(FlatSprint{ID: "1", Name: "S1", State: "active", StartDate: "2026-01-01"})
 
 	t.Run("empty name", func(t *testing.T) {
 		key, val, ok := lookupSprintField(m, "  ")
@@ -177,7 +177,7 @@ func TestLookupSprintField(t *testing.T) {
 }
 
 func TestFilterSprintFields_EmptyList(t *testing.T) {
-	s := FlatSprint{ID: 3, Name: "All", State: "future"}
+	s := FlatSprint{ID: "3", Name: "All", State: "future"}
 	got := FilterSprintFields(s, nil)
 	if len(got) != 3 {
 		t.Fatalf("empty filter should return full map, got %d: %v", len(got), got)
@@ -185,7 +185,7 @@ func TestFilterSprintFields_EmptyList(t *testing.T) {
 }
 
 func TestFilterSprintFields_SkipsEmptyAndUnknown(t *testing.T) {
-	s := FlatSprint{ID: 4, Name: "S4", State: "active"}
+	s := FlatSprint{ID: "4", Name: "S4", State: "active"}
 	got := FilterSprintFields(s, []string{"", "  ", "name", "missing"})
 	if len(got) != 1 || got["name"] != "S4" {
 		t.Errorf("expected only name, got %v", got)
@@ -194,7 +194,7 @@ func TestFilterSprintFields_SkipsEmptyAndUnknown(t *testing.T) {
 
 func TestSprintToMap_AllFields(t *testing.T) {
 	s := FlatSprint{
-		ID:        10,
+		ID:        "10",
 		Name:      "Sprint",
 		State:     "closed",
 		StartDate: "2026-03-01",

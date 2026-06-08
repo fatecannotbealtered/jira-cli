@@ -1,9 +1,15 @@
 package config
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,6 +24,13 @@ var (
 type Config struct {
 	Host  string `json:"host"`
 	Token string `json:"token"`
+}
+
+type diskConfig struct {
+	Version  int    `json:"version"`
+	Host     string `json:"host"`
+	Token    string `json:"token,omitempty"`
+	TokenEnc string `json:"token_enc,omitempty"`
 }
 
 // Dir returns the configuration directory path ~/.jira-cli/
@@ -43,8 +56,21 @@ func Load() (*Config, error) {
 	// 1. Try config file
 	data, err := os.ReadFile(FilePath())
 	if err == nil {
-		if err := json.Unmarshal(data, cfg); err != nil {
+		var disk diskConfig
+		if err := json.Unmarshal(data, &disk); err != nil {
 			return nil, fmt.Errorf("parsing config %s: %w", FilePath(), err)
+		}
+		cfg.Host = disk.Host
+		switch {
+		case disk.TokenEnc != "":
+			token, err := decryptToken(disk.TokenEnc)
+			if err != nil {
+				return nil, fmt.Errorf("decrypting config token: %w", err)
+			}
+			cfg.Token = token
+		default:
+			// Legacy plaintext config; the next successful login/save rewrites it encrypted.
+			cfg.Token = disk.Token
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("reading config: %w", err)
@@ -68,7 +94,11 @@ func Save(cfg *Config) error {
 		return fmt.Errorf("creating config dir: %w", err)
 	}
 
-	data, err := configMarshalIndent(cfg, "", "  ")
+	tokenEnc, err := encryptToken(cfg.Token)
+	if err != nil {
+		return fmt.Errorf("encrypting config token: %w", err)
+	}
+	data, err := configMarshalIndent(diskConfig{Version: 2, Host: cfg.Host, TokenEnc: tokenEnc}, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encoding config: %w", err)
 	}
@@ -77,6 +107,63 @@ func Save(cfg *Config) error {
 		return fmt.Errorf("writing config: %w", err)
 	}
 	return nil
+}
+
+func machineKey() ([]byte, error) {
+	home, _ := os.UserHomeDir()
+	host, _ := os.Hostname()
+	material := "jira-cli-config-v2|" + host + "|" + home
+	sum := sha256.Sum256([]byte(material))
+	return sum[:], nil
+}
+
+func encryptToken(token string) (string, error) {
+	key, err := machineKey()
+	if err != nil {
+		return "", err
+	}
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return "", err
+	}
+	sealed := gcm.Seal(nonce, nonce, []byte(token), nil)
+	return base64.StdEncoding.EncodeToString(sealed), nil
+}
+
+func decryptToken(encoded string) (string, error) {
+	data, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return "", err
+	}
+	key, err := machineKey()
+	if err != nil {
+		return "", err
+	}
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	if len(data) < gcm.NonceSize() {
+		return "", fmt.Errorf("encrypted token is too short")
+	}
+	nonce, ciphertext := data[:gcm.NonceSize()], data[gcm.NonceSize():]
+	plain, err := gcm.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return "", err
+	}
+	return string(plain), nil
 }
 
 // MustLoad reads the configuration and validates required fields.

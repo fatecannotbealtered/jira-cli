@@ -23,13 +23,14 @@ func init() {
 }
 
 type contextDocument struct {
-	Tool    string            `json:"tool"`
-	Version string            `json:"version"`
-	Runtime contextRuntime    `json:"runtime"`
-	Config  contextConfig     `json:"config"`
-	Account *contextAccount   `json:"account,omitempty"`
-	Errors  []string          `json:"errors,omitempty"`
-	Env     map[string]string `json:"env"`
+	Tool        string             `json:"tool"`
+	Version     string             `json:"version"`
+	Runtime     contextRuntime     `json:"runtime"`
+	Config      contextConfig      `json:"config"`
+	Credentials contextCredentials `json:"credentials"`
+	Account     *contextAccount    `json:"account,omitempty"`
+	Errors      []string           `json:"errors,omitempty"`
+	Env         map[string]string  `json:"env"`
 }
 
 type contextRuntime struct {
@@ -45,8 +46,14 @@ type contextConfig struct {
 	TokenPresent bool   `json:"token_present"`
 	TokenSource  string `json:"token_source,omitempty"`
 	Configured   bool   `json:"configured"`
-	AuthStatus   string `json:"auth_status"`
-	AuthError    string `json:"auth_error,omitempty"`
+}
+
+type contextCredentials struct {
+	Configured bool   `json:"configured"`
+	Present    bool   `json:"present"`
+	Source     string `json:"source,omitempty"`
+	Status     string `json:"status"`
+	Error      string `json:"error,omitempty"`
 }
 
 type contextAccount struct {
@@ -58,10 +65,11 @@ type contextAccount struct {
 func runContext(_ *cobra.Command, _ []string) error {
 	cwd, _ := os.Getwd()
 	doc := contextDocument{
-		Tool:    "jira-cli",
-		Version: version,
-		Runtime: contextRuntime{OS: runtime.GOOS, Arch: runtime.GOARCH, CWD: cwd},
-		Config:  contextConfig{ConfigFile: config.FilePath(), AuthStatus: "not_configured"},
+		Tool:        "jira-cli",
+		Version:     version,
+		Runtime:     contextRuntime{OS: runtime.GOOS, Arch: runtime.GOARCH, CWD: cwd},
+		Config:      contextConfig{ConfigFile: config.FilePath()},
+		Credentials: contextCredentials{Status: "not_configured"},
 		Env: map[string]string{
 			"JIRA_HOST":  envPresence("JIRA_HOST"),
 			"JIRA_TOKEN": envPresence("JIRA_TOKEN"),
@@ -71,7 +79,8 @@ func runContext(_ *cobra.Command, _ []string) error {
 	cfg, err := config.Load()
 	if err != nil {
 		doc.Errors = append(doc.Errors, err.Error())
-		doc.Config.AuthStatus = "config_error"
+		doc.Credentials.Status = "config_error"
+		doc.Credentials.Error = err.Error()
 		printContextResult(doc)
 		return nil
 	}
@@ -81,6 +90,9 @@ func runContext(_ *cobra.Command, _ []string) error {
 	doc.Config.Configured = cfg.Host != "" && cfg.Token != ""
 	doc.Config.HostSource = valueSource("JIRA_HOST", cfg.Host)
 	doc.Config.TokenSource = valueSource("JIRA_TOKEN", cfg.Token)
+	doc.Credentials.Configured = doc.Config.Configured
+	doc.Credentials.Present = doc.Config.TokenPresent
+	doc.Credentials.Source = doc.Config.TokenSource
 	if !doc.Config.Configured {
 		printContextResult(doc)
 		return nil
@@ -88,12 +100,12 @@ func runContext(_ *cobra.Command, _ []string) error {
 
 	myself, err := api.NewClient(cfg).Users.Me()
 	if err != nil {
-		doc.Config.AuthStatus = "invalid"
-		doc.Config.AuthError = err.Error()
+		doc.Credentials.Status = "invalid"
+		doc.Credentials.Error = err.Error()
 		printContextResult(doc)
 		return nil
 	}
-	doc.Config.AuthStatus = "valid"
+	doc.Credentials.Status = "valid"
 	doc.Account = &contextAccount{
 		Username:    myself.Name,
 		DisplayName: myself.DisplayName,
@@ -114,7 +126,7 @@ func printContextResult(doc contextDocument) {
 	if doc.Config.Host != "" {
 		output.Gray("  Host: " + doc.Config.Host)
 	}
-	output.Gray("  Auth: " + doc.Config.AuthStatus)
+	output.Gray("  Auth: " + doc.Credentials.Status)
 	if doc.Account != nil {
 		output.Gray(fmt.Sprintf("  Account: %s (%s)", doc.Account.DisplayName, doc.Account.Username))
 	}

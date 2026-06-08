@@ -82,14 +82,14 @@ type ErrorCode string
 
 const (
 	ErrConfig          ErrorCode = "E_CONFIG"
-	ErrAuth            ErrorCode = "E_AUTH_REQUIRED"
+	ErrAuth            ErrorCode = "E_AUTH"
 	ErrForbidden       ErrorCode = "E_FORBIDDEN"
 	ErrNotFound        ErrorCode = "E_NOT_FOUND"
 	ErrRateLimit       ErrorCode = "E_RATE_LIMITED"
 	ErrServer          ErrorCode = "E_SERVER"
 	ErrValidation      ErrorCode = "E_VALIDATION"
 	ErrNetwork         ErrorCode = "E_NETWORK"
-	ErrConfirmRequired ErrorCode = "E_CONFIRM_REQUIRED"
+	ErrConfirmRequired ErrorCode = "E_CONFIRMATION_REQUIRED"
 	ErrConflict        ErrorCode = "E_CONFLICT"
 	ErrTimeout         ErrorCode = "E_TIMEOUT"
 	ErrUnknown         ErrorCode = "E_UNKNOWN"
@@ -182,6 +182,7 @@ func PrintErrorJSONWithCode(msg string, statusCode int, code ErrorCode) {
 	payload := Envelope{
 		OK:            false,
 		SchemaVersion: SchemaVersion,
+		Meta:          durationMeta(),
 		Error: &EnvelopeError{
 			Code:      code,
 			Message:   msg,
@@ -191,8 +192,8 @@ func PrintErrorJSONWithCode(msg string, statusCode int, code ErrorCode) {
 	}
 	data, err := marshalForOutput(payload)
 	if err != nil {
-		_, _ = fmt.Fprintf(os.Stdout, `{"ok":false,"schema_version":%q,"error":{"code":%q,"message":%q,"retryable":%v}}`+"\n",
-			SchemaVersion, code, msg, RetryableForErrorCode(code))
+		_, _ = fmt.Fprintf(os.Stdout, `{"ok":false,"schema_version":%q,"error":{"code":%q,"message":%q,"retryable":%v},"meta":{"duration_ms":%d}}`+"\n",
+			SchemaVersion, code, msg, RetryableForErrorCode(code), durationMeta()["duration_ms"])
 		return
 	}
 	fmt.Println(string(data))

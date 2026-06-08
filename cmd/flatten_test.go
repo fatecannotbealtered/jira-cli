@@ -39,7 +39,7 @@ func TestToFlatSprints(t *testing.T) {
 	if len(flat) != 2 {
 		t.Fatalf("len = %d, want 2", len(flat))
 	}
-	if flat[0].ID != 1 || flat[1].Name != "S2" {
+	if flat[0].ID != "1" || flat[1].Name != "S2" {
 		t.Errorf("unexpected flat sprints: %+v", flat)
 	}
 }
@@ -82,7 +82,7 @@ func TestPrintSprintsJSON_Fields(t *testing.T) {
 	if len(result) != 1 {
 		t.Fatalf("expected 1 sprint, got %d", len(result))
 	}
-	if result[0]["id"].(float64) != 12 {
+	if result[0]["id"] != "12" {
 		t.Errorf("id = %v", result[0]["id"])
 	}
 	if result[0]["name"] != "Filtered" {

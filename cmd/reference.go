@@ -11,10 +11,11 @@ import (
 )
 
 type referenceFlag struct {
-	Name    string `json:"name"`
-	Type    string `json:"type"`
-	Default string `json:"default"`
-	Usage   string `json:"usage"`
+	Name     string `json:"name"`
+	Type     string `json:"type"`
+	Default  string `json:"default"`
+	Usage    string `json:"usage"`
+	Required bool   `json:"required"`
 }
 
 func formatFlagDefault(def string) string {
@@ -31,10 +32,11 @@ func collectReferenceFlags(local, persistent *pflag.FlagSet, inheritPersistent b
 			return
 		}
 		flags = append(flags, referenceFlag{
-			Name:    f.Name,
-			Type:    f.Value.Type(),
-			Default: formatFlagDefault(f.DefValue),
-			Usage:   f.Usage,
+			Name:     f.Name,
+			Type:     f.Value.Type(),
+			Default:  formatFlagDefault(f.DefValue),
+			Usage:    f.Usage,
+			Required: strings.Contains(strings.ToLower(f.Usage), "required"),
 		})
 	})
 	if inheritPersistent {
@@ -46,10 +48,11 @@ func collectReferenceFlags(local, persistent *pflag.FlagSet, inheritPersistent b
 				return
 			}
 			flags = append(flags, referenceFlag{
-				Name:    f.Name,
-				Type:    f.Value.Type(),
-				Default: formatFlagDefault(f.DefValue),
-				Usage:   f.Usage,
+				Name:     f.Name,
+				Type:     f.Value.Type(),
+				Default:  formatFlagDefault(f.DefValue),
+				Usage:    f.Usage,
+				Required: strings.Contains(strings.ToLower(f.Usage), "required"),
 			})
 		})
 	}
@@ -57,20 +60,27 @@ func collectReferenceFlags(local, persistent *pflag.FlagSet, inheritPersistent b
 }
 
 type commandReference struct {
-	CommandPath      string             `json:"commandPath"`
+	Path             string             `json:"path"`
 	Use              string             `json:"use"`
 	Short            string             `json:"short,omitempty"`
+	Type             string             `json:"type"`
+	PermissionTier   string             `json:"permission_tier"`
+	BlastRadius      string             `json:"blast_radius,omitempty"`
 	Flags            []referenceFlag    `json:"flags,omitempty"`
-	SupportedFormats []string           `json:"supportedFormats"`
+	SupportedFormats []string           `json:"supported_formats"`
 	Write            bool               `json:"write,omitempty"`
+	OutputSchema     map[string]any     `json:"output_schema,omitempty"`
 	Subcommands      []commandReference `json:"subcommands,omitempty"`
 }
 
 type referenceDocument struct {
-	SchemaVersion string             `json:"schema_version"`
-	Version       string             `json:"version"`
-	Root          commandReference   `json:"root"`
-	Commands      []commandReference `json:"commands"`
+	Tool         string             `json:"tool"`
+	Version      string             `json:"version"`
+	SecurityTier string             `json:"security_tier"`
+	Root         commandReference   `json:"root"`
+	Commands     []commandReference `json:"commands"`
+	ExitCodes    map[string]string  `json:"exit_codes"`
+	ErrorCodes   map[string]string  `json:"error_codes"`
 }
 
 var referenceCmd = &cobra.Command{
@@ -110,21 +120,28 @@ func buildReferenceDocument(root *cobra.Command) referenceDocument {
 	var commands []commandReference
 	rootRef := buildCommandReference(root, "", &commands)
 	return referenceDocument{
-		SchemaVersion: output.SchemaVersion,
-		Version:       root.Version,
-		Root:          rootRef,
-		Commands:      commands,
+		Tool:         "jira-cli",
+		Version:      root.Version,
+		SecurityTier: "T1",
+		Root:         rootRef,
+		Commands:     commands,
+		ExitCodes:    referenceExitCodes(),
+		ErrorCodes:   referenceErrorCodes(),
 	}
 }
 
 func buildCommandReference(cmd *cobra.Command, prefix string, commands *[]commandReference) commandReference {
 	ref := commandReference{
-		CommandPath:      strings.TrimSpace(prefix + cmd.Name()),
+		Path:             strings.TrimSpace(prefix + cmd.Name()),
 		Use:              cmd.Use,
 		Short:            cmd.Short,
+		Type:             commandType(cmd),
+		PermissionTier:   permissionTier(cmd),
+		BlastRadius:      blastRadius(cmd),
 		Flags:            collectReferenceFlags(cmd.LocalFlags(), cmd.PersistentFlags(), cmd.Parent() != nil),
 		SupportedFormats: supportedFormatsForCommand(cmd),
 		Write:            isWriteCommand(cmd),
+		OutputSchema:     outputSchemaForCommand(cmd),
 	}
 	children := cmd.Commands()
 	sort.Slice(children, func(i, j int) bool {
@@ -134,7 +151,7 @@ func buildCommandReference(cmd *cobra.Command, prefix string, commands *[]comman
 		if child.Hidden || !child.IsAvailableCommand() {
 			continue
 		}
-		childRef := buildCommandReference(child, ref.CommandPath+" ", commands)
+		childRef := buildCommandReference(child, ref.Path+" ", commands)
 		ref.Subcommands = append(ref.Subcommands, childRef)
 	}
 	if cmd.Runnable() {
@@ -149,6 +166,87 @@ func supportedFormatsForCommand(cmd *cobra.Command) []string {
 		formats = append(formats, outputFormatRaw)
 	}
 	return formats
+}
+
+func commandType(cmd *cobra.Command) string {
+	if isWriteCommand(cmd) {
+		return "write"
+	}
+	return "read"
+}
+
+func permissionTier(cmd *cobra.Command) string {
+	if !isWriteCommand(cmd) {
+		return "read"
+	}
+	switch cmd.CommandPath() {
+	case "jira-cli issue delete", "jira-cli issue bulk-transition", "jira-cli sprint close", "jira-cli filter delete", "jira-cli update":
+		return "write-dangerous"
+	default:
+		return "write"
+	}
+}
+
+func blastRadius(cmd *cobra.Command) string {
+	if !isWriteCommand(cmd) {
+		return "reads Jira data visible to the configured account"
+	}
+	switch cmd.CommandPath() {
+	case "jira-cli issue delete":
+		return "deletes one Jira issue visible and deletable by the configured account"
+	case "jira-cli issue bulk-transition":
+		return "transitions multiple Jira issues selected by explicit keys or JQL"
+	case "jira-cli sprint close":
+		return "closes one Jira sprint"
+	case "jira-cli filter delete":
+		return "deletes one saved Jira filter visible and deletable by the configured account"
+	case "jira-cli update":
+		return "replaces the local jira-cli executable"
+	default:
+		return "modifies Jira state within the configured account permissions"
+	}
+}
+
+func outputSchemaForCommand(cmd *cobra.Command) map[string]any {
+	schema := map[string]any{
+		"format": "json success/failure envelope",
+		"data":   "command-specific payload",
+	}
+	if supportsRawFormat(cmd) {
+		schema["raw"] = "raw Jira API JSON without the envelope when --format raw is selected"
+	}
+	return schema
+}
+
+func referenceExitCodes() map[string]string {
+	return map[string]string{
+		"0": "success",
+		"1": "generic error",
+		"2": "argument or validation error",
+		"3": "resource not found",
+		"4": "auth, permission, or config failure",
+		"5": "confirmation token required",
+		"6": "conflict or invalid confirmation token",
+		"7": "retryable transient error",
+		"8": "timeout",
+	}
+}
+
+func referenceErrorCodes() map[string]string {
+	return map[string]string{
+		string(output.ErrConfig):          "configuration is missing or invalid",
+		string(output.ErrAuth):            "authentication failed",
+		string(output.ErrForbidden):       "permission denied",
+		string(output.ErrNotFound):        "resource not found",
+		string(output.ErrRateLimit):       "rate limited",
+		string(output.ErrServer):          "Jira server error",
+		string(output.ErrValidation):      "arguments or request are invalid",
+		string(output.ErrNetwork):         "network failure",
+		string(output.ErrConfirmRequired): "write requires a dry-run confirmation token",
+		string(output.ErrConflict):        "confirmation token expired or no longer matches",
+		string(output.ErrTimeout):         "request timed out",
+		string(output.ErrUnknown):         "unclassified error",
+	}
 }
 
 func walkCommands(cmd *cobra.Command, lines *[]string, prefix string) {

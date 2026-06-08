@@ -32,9 +32,15 @@
     "scripts/install.js",
     "scripts/run.js",
     "skills/",
+    ".agent/",
+    "AGENTS.md",
+    "README_zh.md",
     "CHANGELOG.md",
     "CONTRIBUTING.md",
-    "SECURITY.md"
+    "SECURITY.md",
+    "NOTICE.md",
+    "CODE_OF_CONDUCT.md",
+    "docs/"
   ],
   "os": [
     "darwin",

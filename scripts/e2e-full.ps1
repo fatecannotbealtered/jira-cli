@@ -63,6 +63,23 @@ $OutputEncoding = $script:UTF8
 
 # ─── Helper functions ──────────────────────────────────────────────────────────
 
+function ConvertFrom-Json {
+    [CmdletBinding()]
+    param(
+        [Parameter(ValueFromPipeline = $true)]
+        [string]$InputObject
+    )
+    process {
+        $obj = Microsoft.PowerShell.Utility\ConvertFrom-Json -InputObject $InputObject
+        if ($null -ne $obj -and
+            ($obj.PSObject.Properties.Name -contains "ok") -and
+            ($obj.PSObject.Properties.Name -contains "data")) {
+            return $obj.data
+        }
+        return $obj
+    }
+}
+
 function Write-Phase($msg) {
     Write-Host "`n╔══════════════════════════════════════════╗" -ForegroundColor Cyan
     Write-Host "║  $msg" -ForegroundColor Cyan
@@ -81,6 +98,87 @@ function Add-Result {
         DurationMs = $DurationMs
         Note       = $Note
     })
+}
+
+function Test-HasArg {
+    param([string[]]$CmdArgs, [string]$Name)
+    foreach ($a in $CmdArgs) {
+        if ($a -eq $Name -or $a.StartsWith("$Name=")) { return $true }
+    }
+    return $false
+}
+
+function Test-FormatText {
+    param([string[]]$CmdArgs)
+    for ($i = 0; $i -lt $CmdArgs.Count; $i++) {
+        if ($CmdArgs[$i] -eq "--format" -and $i + 1 -lt $CmdArgs.Count -and $CmdArgs[$i + 1] -eq "text") { return $true }
+        if ($CmdArgs[$i] -eq "--format=text") { return $true }
+    }
+    return $false
+}
+
+function Test-WriteCommand {
+    param([string[]]$CmdArgs)
+    $text = " " + (($CmdArgs | Where-Object { $_ -notmatch '^--' }) -join " ") + " "
+    $patterns = @(
+        " issue create ", " issue edit ", " issue delete ", " issue assign ", " issue unassign ",
+        " issue watch ", " issue unwatch ", " issue vote ", " issue unvote ", " issue attach ",
+        " issue bulk-transition ", " issue clone ", " issue transition ", " issue link ", " issue unlink ",
+        " issue remote-link ", " issue comment add ", " issue comment delete ", " issue worklog add ",
+        " filter create ", " filter delete ",
+        " sprint create ", " sprint update ", " sprint close ", " sprint move ",
+        " install-skill ", " login ", " logout ", " update "
+    )
+    foreach ($p in $patterns) {
+        if ($text.Contains($p)) { return $true }
+    }
+    return $false
+}
+
+function Invoke-JiraProcessRaw {
+    param([string[]]$CmdArgs)
+    $tmpOut = [System.IO.Path]::GetTempFileName()
+    $tmpErr = [System.IO.Path]::GetTempFileName()
+    try {
+        $quoted = @()
+        foreach ($a in $CmdArgs) {
+            if ($a -match '[\s"]') { $quoted += "`"$($a -replace '"','\"')`"" } else { $quoted += $a }
+        }
+        $argStr = $quoted -join ' '
+        $proc = Start-Process -FilePath $script:JiraBin -ArgumentList $argStr `
+            -NoNewWindow -Wait -PassThru `
+            -RedirectStandardOutput $tmpOut `
+            -RedirectStandardError $tmpErr
+        $out = [System.IO.File]::ReadAllText($tmpOut, $script:UTF8)
+        $errText = [System.IO.File]::ReadAllText($tmpErr, $script:UTF8)
+        if ($errText) { $out = $out + "`n" + $errText }
+        return @{ ExitCode = $proc.ExitCode; Out = $out }
+    } finally {
+        Remove-Item -Force $tmpOut -ErrorAction SilentlyContinue
+        Remove-Item -Force $tmpErr -ErrorAction SilentlyContinue
+    }
+}
+
+function Invoke-JiraProcess {
+    param([string[]]$CmdArgs)
+    if ((Test-WriteCommand $CmdArgs) -and
+        -not (Test-HasArg $CmdArgs "--dry-run") -and
+        -not (Test-HasArg $CmdArgs "--confirm") -and
+        -not (Test-FormatText $CmdArgs)) {
+        $dry = Invoke-JiraProcessRaw (@($CmdArgs) + @("--dry-run"))
+        if ($dry.ExitCode -ne 0) { return $dry }
+        try {
+            $preview = $dry.Out | ConvertFrom-Json
+            $token = [string]$preview.confirm_token
+            if ([string]::IsNullOrWhiteSpace($token)) {
+                return @{ ExitCode = 6; Out = "dry-run did not return confirm_token`n$($dry.Out)" }
+            }
+            return Invoke-JiraProcessRaw (@($CmdArgs) + @("--confirm", $token))
+        } catch {
+            return @{ ExitCode = 6; Out = "failed to parse dry-run confirm_token: $($_.Exception.Message)`n$($dry.Out)" }
+        }
+    }
+    return Invoke-JiraProcessRaw $CmdArgs
 }
 
 function Invoke-Test {
@@ -108,30 +206,10 @@ function Invoke-Test {
 
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
     try {
-        # Use temp file to avoid PS 5.1 pipe encoding issues with CJK characters
-        $tmpOut = [System.IO.Path]::GetTempFileName()
-        $tmpErr = [System.IO.Path]::GetTempFileName()
-        try {
-            # Quote arguments containing spaces for Start-Process
-            $quoted = @()
-            foreach ($a in $CmdArgs) {
-                if ($a -match '[\s"]') { $quoted += "`"$($a -replace '"','\"')`"" } else { $quoted += $a }
-            }
-            $argStr = $quoted -join ' '
-            $proc = Start-Process -FilePath $script:JiraBin -ArgumentList $argStr `
-                -NoNewWindow -Wait -PassThru `
-                -RedirectStandardOutput $tmpOut `
-                -RedirectStandardError $tmpErr
-            $code = $proc.ExitCode
-            $out = [System.IO.File]::ReadAllText($tmpOut, $script:UTF8)
-            $errText = [System.IO.File]::ReadAllText($tmpErr, $script:UTF8)
-            if ($errText) { $out = $out + "`n" + $errText }
-        } finally {
-            Remove-Item -Force $tmpOut -ErrorAction SilentlyContinue
-            Remove-Item -Force $tmpErr -ErrorAction SilentlyContinue
-        }
+        $run = Invoke-JiraProcess $CmdArgs
         $sw.Stop()
-        $code = $proc.ExitCode
+        $code = $run.ExitCode
+        $out = $run.Out
         if ($code -ne 0 -and [string]::IsNullOrWhiteSpace($Note)) {
             $trimmed = $out.Trim()
             if ($trimmed.Length -gt 120) { $trimmed = $trimmed.Substring(0, 120) }
@@ -169,27 +247,7 @@ function Invoke-Bin {
         Returns @{ ExitCode = int; Out = string }
     #>
     param([string[]]$CmdArgs)
-    $tmpOut = [System.IO.Path]::GetTempFileName()
-    $tmpErr = [System.IO.Path]::GetTempFileName()
-    try {
-        # Quote arguments containing spaces for Start-Process
-        $quoted = @()
-        foreach ($a in $CmdArgs) {
-            if ($a -match '[\s"]') { $quoted += "`"$($a -replace '"','\"')`"" } else { $quoted += $a }
-        }
-        $argStr = $quoted -join ' '
-        $proc = Start-Process -FilePath $script:JiraBin -ArgumentList $argStr `
-            -NoNewWindow -Wait -PassThru `
-            -RedirectStandardOutput $tmpOut `
-            -RedirectStandardError $tmpErr
-        $out = [System.IO.File]::ReadAllText($tmpOut, $script:UTF8)
-        $errText = [System.IO.File]::ReadAllText($tmpErr, $script:UTF8)
-        if ($errText) { $out = $out + "`n" + $errText }
-        return @{ ExitCode = $proc.ExitCode; Out = $out }
-    } finally {
-        Remove-Item -Force $tmpOut -ErrorAction SilentlyContinue
-        Remove-Item -Force $tmpErr -ErrorAction SilentlyContinue
-    }
+    return Invoke-JiraProcess $CmdArgs
 }
 
 function Skip-Row {

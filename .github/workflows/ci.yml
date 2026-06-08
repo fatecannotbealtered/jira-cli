@@ -23,6 +23,12 @@ jobs:
         with:
           go-version: ${{ matrix.go-version }}
 
+      - name: Set up Node
+        if: runner.os == 'Linux'
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+
       - name: Tidy modules
         run: go mod tidy
 
@@ -35,6 +41,12 @@ jobs:
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.11.4
+
+      - name: Audit npm wrapper
+        if: runner.os == 'Linux'
+        run: |
+          npm ci --ignore-scripts
+          npm audit --audit-level=high
 
       - name: Vet
         run: go vet ./...

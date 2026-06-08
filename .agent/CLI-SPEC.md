@@ -80,8 +80,8 @@ Conventions:
 ## 4. stdout / stderr rules
 
 - In `json` mode, stdout may contain only one JSON document, or NDJSON for explicitly streaming commands.
-- stderr may carry progress, warnings, diagnostics, error envelopes.
-- On error, stdout should be empty and the error envelope goes to stderr.
+- stderr may carry progress, warnings, diagnostics, and human-readable text-mode errors.
+- On error in `json` mode, stdout contains the single failure envelope; stderr may contain only side-channel text that is not required for machine parsing.
 - `--quiet` may only suppress non-error info on stderr.
 - No banners, prompts, progress bars, or color codes before/after the JSON on stdout.
 - stdout / stderr are always **UTF-8 encoded, no BOM**, newline `\n`, so agents parse reliably across platforms (especially Windows).

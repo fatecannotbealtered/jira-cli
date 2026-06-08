@@ -48,7 +48,7 @@ var worklogAddCmd = &cobra.Command{
 			return handleAPIError(err, jsonMode)
 		}
 		if jsonMode {
-			output.PrintJSON(worklog)
+			output.PrintJSON(toFlatWorklog(*worklog))
 			return nil
 		}
 		output.Success(fmt.Sprintf("Logged %s on %s (ID: %s)", worklog.TimeSpent, args[0], worklog.ID))
@@ -70,7 +70,11 @@ var worklogListCmd = &cobra.Command{
 			return handleAPIError(err, jsonMode)
 		}
 		if jsonMode {
-			output.PrintJSON(worklogs)
+			flat := make([]flatWorklog, len(worklogs))
+			for i := range worklogs {
+				flat[i] = toFlatWorklog(worklogs[i])
+			}
+			output.PrintJSON(flat)
 			return nil
 		}
 		if len(worklogs) == 0 {
@@ -89,4 +93,35 @@ var worklogListCmd = &cobra.Command{
 		output.Table(headers, rows)
 		return nil
 	},
+}
+
+type flatWorklog struct {
+	ID               string   `json:"id"`
+	Author           string   `json:"author,omitempty"`
+	Started          string   `json:"started,omitempty"`
+	TimeSpent        string   `json:"timeSpent"`
+	TimeSpentSeconds int      `json:"timeSpentSeconds"`
+	Comment          string   `json:"comment,omitempty"`
+	Untrusted        []string `json:"_untrusted,omitempty"`
+}
+
+func toFlatWorklog(worklog api.Worklog) flatWorklog {
+	comment := api.ADFToText(worklog.Comment)
+	if comment == "" {
+		if s, ok := worklog.Comment.(string); ok {
+			comment = s
+		}
+	}
+	result := flatWorklog{
+		ID:               worklog.ID,
+		Author:           worklog.Author.Name,
+		Started:          isoUTC(worklog.Started),
+		TimeSpent:        worklog.TimeSpent,
+		TimeSpentSeconds: worklog.TimeSpentSeconds,
+		Comment:          comment,
+	}
+	if result.Comment != "" {
+		result.Untrusted = []string{"comment"}
+	}
+	return result
 }

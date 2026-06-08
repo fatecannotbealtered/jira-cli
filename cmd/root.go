@@ -405,8 +405,24 @@ func confirmPayload(action string, detail map[string]any, expiresAt time.Time) m
 		"command":        currentCommandPath(),
 		"action":         action,
 		"details":        detail,
+		"context":        confirmContext(),
 		"expires_at":     expiresAt.UTC().Format(time.RFC3339),
 	}
+}
+
+func confirmContext() map[string]any {
+	cfg, err := config.Load()
+	if err != nil {
+		return map[string]any{"config": "unavailable"}
+	}
+	ctx := map[string]any{
+		"host": cfg.Host,
+	}
+	if strings.TrimSpace(cfg.Token) != "" {
+		sum := sha256.Sum256([]byte(strings.TrimSpace(cfg.Token)))
+		ctx["token_sha256"] = hex.EncodeToString(sum[:])[:16]
+	}
+	return ctx
 }
 
 func confirmDigest(action string, detail map[string]any, expiresAt time.Time) (string, error) {

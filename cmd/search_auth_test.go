@@ -565,6 +565,17 @@ func TestDoctor_SuccessJSON(t *testing.T) {
 	}
 }
 
+func TestContext_SuccessJSONCredentials(t *testing.T) {
+	setupMockJira(t, jiraSearchHandler(t, nil))
+	stdout, _ := runRootOKClean(t, "--json", "context")
+	var result map[string]any
+	decodeEnvelopeData(t, stdout, &result)
+	credentials := result["credentials"].(map[string]any)
+	if credentials["configured"] != true || credentials["present"] != true || credentials["status"] != "valid" {
+		t.Fatalf("credentials=%v", credentials)
+	}
+}
+
 // ─── login runLogin / runLogout ─────────────────────────────────────────────
 
 func TestLogin_NonInteractiveInvalidHost(t *testing.T) {

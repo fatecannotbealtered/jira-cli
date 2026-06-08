@@ -51,7 +51,7 @@ var commentAddCmd = &cobra.Command{
 			return handleAPIError(err, jsonMode)
 		}
 		if jsonMode {
-			output.PrintJSON(comment)
+			output.PrintJSON(toFlatComment(*comment))
 			return nil
 		}
 		output.Success(fmt.Sprintf("Comment added (ID: %s) at %s", comment.ID, formatTime(comment.Created)))
@@ -74,7 +74,11 @@ var commentListCmd = &cobra.Command{
 			return handleAPIError(err, jsonMode)
 		}
 		if jsonMode {
-			output.PrintJSON(comments)
+			flat := make([]flatComment, len(comments))
+			for i := range comments {
+				flat[i] = toFlatComment(comments[i])
+			}
+			output.PrintJSON(flat)
 			return nil
 		}
 		if len(comments) == 0 {
@@ -93,6 +97,35 @@ var commentListCmd = &cobra.Command{
 		output.Table(headers, rows)
 		return nil
 	},
+}
+
+type flatComment struct {
+	ID        string   `json:"id"`
+	Author    string   `json:"author,omitempty"`
+	Created   string   `json:"created,omitempty"`
+	Updated   string   `json:"updated,omitempty"`
+	Body      string   `json:"body,omitempty"`
+	Untrusted []string `json:"_untrusted,omitempty"`
+}
+
+func toFlatComment(comment api.Comment) flatComment {
+	body := api.ADFToText(comment.Body)
+	if body == "" {
+		if s, ok := comment.Body.(string); ok {
+			body = s
+		}
+	}
+	result := flatComment{
+		ID:      comment.ID,
+		Author:  comment.Author.Name,
+		Created: isoUTC(comment.Created),
+		Updated: isoUTC(comment.Updated),
+		Body:    body,
+	}
+	if result.Body != "" {
+		result.Untrusted = []string{"body"}
+	}
+	return result
 }
 
 var commentDeleteCmd = &cobra.Command{

@@ -47,6 +47,32 @@ func TestSaveAndLoad(t *testing.T) {
 	if got.Host != want.Host || got.Token != want.Token {
 		t.Errorf("got %+v, want %+v", got, want)
 	}
+
+	data, err := os.ReadFile(FilePath())
+	if err != nil {
+		t.Fatalf("ReadFile() error: %v", err)
+	}
+	if strings.Contains(string(data), want.Token) {
+		t.Fatalf("config file contains plaintext token: %s", data)
+	}
+	if !strings.Contains(string(data), "token_enc") {
+		t.Fatalf("config file should contain encrypted token: %s", data)
+	}
+}
+
+func TestLoadLegacyPlaintextConfig(t *testing.T) {
+	_, restore := overrideHome(t)
+	defer restore()
+
+	writeConfigFile(t, `{"host":"https://jira.example.com","token":"legacy-token"}`)
+
+	got, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if got.Host != "https://jira.example.com" || got.Token != "legacy-token" {
+		t.Fatalf("got %+v", got)
+	}
 }
 
 func TestSaveCreatesDir(t *testing.T) {

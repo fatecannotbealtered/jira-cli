@@ -60,7 +60,7 @@ var issueTransitionCmd = &cobra.Command{
 			return SilentErr(ExitBadArgs)
 		}
 
-		if dryRunOutput("transition issue", map[string]any{"key": key, "from": fromStatus, "to": targetTransition.To.Name}) {
+		if dryRunOutput("transition issue", map[string]any{"key": key, "from": fromStatus, "to": targetTransition.To.Name, "updated": isoUTC(issue.Fields.Updated)}) {
 			return nil
 		}
 

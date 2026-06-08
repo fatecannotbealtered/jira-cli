@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added runtime `changelog [--since]` output derived from `CHANGELOG.md`, plus an embedded changelog source for built binaries.
+- Added repository standard files for the AI-native tool skeleton: `AGENTS.md`, `NOTICE.md`, `CODE_OF_CONDUCT.md`, `docs/COMPATIBILITY.md`, `docs/E2E.md`, and `docs/OPEN_SOURCE_CHECKLIST.md`.
+- Added bundled Skill version negotiation via `metadata.openclaw.requires.min_version` and a `doctor` version check.
+
+### Changed
+
+- Expanded `jira-cli reference` with tool/version metadata, security tier, command type, permission tier, blast radius, output schema, exit codes, and error codes.
+- JSON IDs for flattened boards and sprints are now strings, and Jira timestamps returned in flattened issue/comment/worklog/attachment output are normalized to ISO 8601 UTC where possible.
+- JSON write confirmation tokens now bind command context, configured host, token fingerprint, and available resource state to reduce stale or cross-context confirmation risk.
+- README, README_zh, CONTRIBUTING, and the bundled Skill now describe stdout JSON envelopes, `doctor` checks, dry-run/confirm writes, runtime changelog refresh, encrypted config, and `_untrusted` fields.
+- The E2E PowerShell scripts unwrap JSON envelopes and exercise write commands through `--dry-run` then `--confirm` in JSON mode.
+
+### Fixed
+
+- JSON failure envelopes now include `meta.duration_ms`.
+- Agent error codes now use the CLI spec names `E_AUTH` and `E_CONFIRMATION_REQUIRED`.
+- Audit log timestamps are written in UTC and audit entries include the configured Jira host while redacting sensitive arguments.
+
+### Security
+
+- Saved config tokens are written as AES-256-GCM encrypted `token_enc` values; legacy plaintext config remains readable for migration.
+- npm install checksum verification now fails closed, with `package-lock.json` committed and npm audit added to CI/release checks.
+- Default JSON output tags Jira-controlled issue summaries/descriptions, comments, worklog comments, and attachment filenames with `_untrusted` where returned.
+
 ## [1.1.0] - 2026-06-06
 
 ### Added

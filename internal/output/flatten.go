@@ -4,24 +4,25 @@ import "strings"
 
 // FlatIssue is a flattened representation of a Jira issue for token-efficient output.
 type FlatIssue struct {
-	Key         string `json:"key"`
-	Summary     string `json:"summary"`
-	Description string `json:"description,omitempty"`
-	Status      string `json:"status"`
-	Type        string `json:"type"`
-	Assignee    string `json:"assignee,omitempty"`
-	Reporter    string `json:"reporter,omitempty"`
-	Priority    string `json:"priority,omitempty"`
-	Created     string `json:"created,omitempty"`
-	Updated     string `json:"updated,omitempty"`
-	Labels      string `json:"labels,omitempty"`
-	Component   string `json:"component,omitempty"`
-	Parent      string `json:"parent,omitempty"`
+	Key         string   `json:"key"`
+	Summary     string   `json:"summary"`
+	Description string   `json:"description,omitempty"`
+	Status      string   `json:"status"`
+	Type        string   `json:"type"`
+	Assignee    string   `json:"assignee,omitempty"`
+	Reporter    string   `json:"reporter,omitempty"`
+	Priority    string   `json:"priority,omitempty"`
+	Created     string   `json:"created,omitempty"`
+	Updated     string   `json:"updated,omitempty"`
+	Labels      string   `json:"labels,omitempty"`
+	Component   string   `json:"component,omitempty"`
+	Parent      string   `json:"parent,omitempty"`
+	Untrusted   []string `json:"_untrusted,omitempty"`
 }
 
 // FlatSprint is a flattened representation of a Jira sprint.
 type FlatSprint struct {
-	ID        int    `json:"id"`
+	ID        string `json:"id"`
 	Name      string `json:"name"`
 	State     string `json:"state"`
 	StartDate string `json:"startDate,omitempty"`
@@ -31,7 +32,7 @@ type FlatSprint struct {
 
 // FlatBoard is a flattened representation of a Jira board.
 type FlatBoard struct {
-	ID          int    `json:"id"`
+	ID          string `json:"id"`
 	Name        string `json:"name"`
 	Type        string `json:"type"`
 	ProjectKey  string `json:"projectKey,omitempty"`
@@ -46,11 +47,23 @@ func FilterFields(issue FlatIssue, fieldNames []string) map[string]any {
 		return m
 	}
 	result := make(map[string]any, len(fieldNames))
+	included := map[string]bool{}
 	for _, name := range fieldNames {
 		key := strings.TrimSpace(strings.ToLower(name))
 		if v, ok := m[key]; ok {
 			result[key] = v
+			included[key] = true
 		}
+	}
+	var untrusted []string
+	for _, name := range issue.Untrusted {
+		key := strings.TrimSpace(strings.ToLower(name))
+		if included[key] {
+			untrusted = append(untrusted, key)
+		}
+	}
+	if len(untrusted) > 0 {
+		result["_untrusted"] = untrusted
 	}
 	return result
 }
@@ -89,6 +102,9 @@ func IssueToMap(issue FlatIssue) map[string]any {
 	}
 	if issue.Parent != "" {
 		m["parent"] = issue.Parent
+	}
+	if len(issue.Untrusted) > 0 {
+		m["_untrusted"] = issue.Untrusted
 	}
 	return m
 }

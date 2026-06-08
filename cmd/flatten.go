@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/fatecannotbealtered/jira-cli/internal/api"
 	"github.com/fatecannotbealtered/jira-cli/internal/output"
@@ -28,8 +30,11 @@ func toFlatIssue(issue *api.Issue) output.FlatIssue {
 		Summary: f.Summary,
 		Status:  f.Status.Name,
 		Type:    f.IssueType.Name,
-		Created: f.Created,
-		Updated: f.Updated,
+		Created: isoUTC(f.Created),
+		Updated: isoUTC(f.Updated),
+		Untrusted: []string{
+			"summary",
+		},
 	}
 	if f.Assignee != nil {
 		fi.Assignee = f.Assignee.Name
@@ -69,6 +74,9 @@ func printIssueJSON(issue *api.Issue, raw bool, fields []string) {
 	}
 	fi := toFlatIssue(issue)
 	fi.Description = descriptionText(issue.Fields.Description)
+	if fi.Description != "" {
+		fi.Untrusted = append(fi.Untrusted, "description")
+	}
 	if len(fields) > 0 {
 		output.PrintJSON(output.FilterFields(fi, fields))
 		return
@@ -97,7 +105,7 @@ func printIssuesJSON(issues []api.Issue, raw bool, fields []string) {
 // toFlatSprint converts an API Sprint to a token-efficient FlatSprint.
 func toFlatSprint(s *api.Sprint) output.FlatSprint {
 	return output.FlatSprint{
-		ID:        s.ID,
+		ID:        strconv.Itoa(s.ID),
 		Name:      s.Name,
 		State:     s.State,
 		StartDate: s.StartDate,
@@ -131,4 +139,42 @@ func printSprintsJSON(sprints []api.Sprint, raw bool, fields []string) {
 		return
 	}
 	output.PrintJSON(flat)
+}
+
+// toFlatBoard converts an API Board to a token-efficient FlatBoard.
+func toFlatBoard(b *api.Board) output.FlatBoard {
+	return output.FlatBoard{
+		ID:          strconv.Itoa(b.ID),
+		Name:        b.Name,
+		Type:        b.Type,
+		ProjectKey:  b.Location.ProjectKey,
+		DisplayName: b.Location.DisplayName,
+	}
+}
+
+func toFlatBoards(boards []api.Board) []output.FlatBoard {
+	result := make([]output.FlatBoard, len(boards))
+	for i := range boards {
+		result[i] = toFlatBoard(&boards[i])
+	}
+	return result
+}
+
+func isoUTC(value string) string {
+	if value == "" {
+		return ""
+	}
+	layouts := []string{
+		"2006-01-02T15:04:05.000-0700",
+		"2006-01-02T15:04:05.000Z0700",
+		time.RFC3339Nano,
+		time.RFC3339,
+	}
+	for _, layout := range layouts {
+		parsed, err := time.Parse(layout, value)
+		if err == nil {
+			return parsed.UTC().Format(time.RFC3339)
+		}
+	}
+	return value
 }

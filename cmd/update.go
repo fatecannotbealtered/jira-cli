@@ -77,6 +77,9 @@ type updateResult struct {
 	CurrentVersion   string `json:"currentVersion"`
 	LatestVersion    string `json:"latestVersion"`
 	RequestedVersion string `json:"requestedVersion,omitempty"`
+	PreviousVersion  string `json:"previous_version,omitempty"`
+	InstalledVersion string `json:"current_version,omitempty"`
+	KnowledgeRefresh string `json:"knowledge_refresh,omitempty"`
 	UpdateAvailable  bool   `json:"updateAvailable"`
 	Installed        bool   `json:"installed,omitempty"`
 	CheckOnly        bool   `json:"checkOnly,omitempty"`
@@ -190,6 +193,9 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 
 	result.Installed = true
 	result.ChecksumVerified = true
+	result.PreviousVersion = currentVersion
+	result.InstalledVersion = latestVersion
+	result.KnowledgeRefresh = fmt.Sprintf("run \"jira-cli changelog --since %s\" before continuing", normalizeVersion(currentVersion))
 	printUpdateResult(result)
 	return nil
 }

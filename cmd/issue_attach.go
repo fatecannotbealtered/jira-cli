@@ -41,7 +41,7 @@ var issueAttachCmd = &cobra.Command{
 			return handleAPIError(err, jsonMode)
 		}
 		if jsonMode {
-			output.PrintJSON(attachments)
+			output.PrintJSON(toFlatAttachments(attachments))
 			return nil
 		}
 		for _, a := range attachments {
@@ -69,7 +69,7 @@ var issueAttachmentsCmd = &cobra.Command{
 			return downloadAttachments(cmd.Context(), client, attachments, outDir, id)
 		}
 		if jsonMode {
-			output.PrintJSON(attachments)
+			output.PrintJSON(toFlatAttachments(attachments))
 			return nil
 		}
 		if len(attachments) == 0 {
@@ -94,10 +94,39 @@ var issueAttachmentsCmd = &cobra.Command{
 }
 
 type savedAttachment struct {
-	ID       string `json:"id"`
-	Filename string `json:"filename"`
-	Path     string `json:"path"`
-	MimeType string `json:"mimeType"`
+	ID        string   `json:"id"`
+	Filename  string   `json:"filename"`
+	Path      string   `json:"path"`
+	MimeType  string   `json:"mimeType"`
+	Untrusted []string `json:"_untrusted,omitempty"`
+}
+
+type flatAttachment struct {
+	ID        string   `json:"id"`
+	Filename  string   `json:"filename"`
+	Size      int      `json:"size"`
+	MimeType  string   `json:"mimeType,omitempty"`
+	Author    string   `json:"author,omitempty"`
+	Created   string   `json:"created,omitempty"`
+	Content   string   `json:"content,omitempty"`
+	Untrusted []string `json:"_untrusted,omitempty"`
+}
+
+func toFlatAttachments(attachments []api.Attachment) []flatAttachment {
+	flat := make([]flatAttachment, len(attachments))
+	for i, a := range attachments {
+		flat[i] = flatAttachment{
+			ID:        a.ID,
+			Filename:  a.Filename,
+			Size:      a.Size,
+			MimeType:  a.MimeType,
+			Author:    a.Author.Name,
+			Created:   isoUTC(a.Created),
+			Content:   a.Content,
+			Untrusted: []string{"filename"},
+		}
+	}
+	return flat
 }
 
 func downloadAttachments(ctx context.Context, client *api.Client, attachments []api.Attachment, outDir, id string) error {
@@ -131,7 +160,7 @@ func downloadAttachments(ctx context.Context, client *api.Client, attachments []
 		if err != nil {
 			return handleAPIError(err, jsonMode)
 		}
-		saved = append(saved, savedAttachment{ID: a.ID, Filename: a.Filename, Path: path, MimeType: a.MimeType})
+		saved = append(saved, savedAttachment{ID: a.ID, Filename: a.Filename, Path: path, MimeType: a.MimeType, Untrusted: []string{"filename"}})
 		if !jsonMode {
 			output.Success(fmt.Sprintf("Downloaded: %s (%d bytes) -> %s", a.Filename, a.Size, path))
 		}

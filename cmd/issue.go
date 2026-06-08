@@ -327,9 +327,14 @@ var issueEditCmd = &cobra.Command{
 			output.Error("no fields to update")
 			return SilentErr(ExitBadArgs)
 		}
+		currentIssue, err := client.Issues.Get(args[0], nil)
+		if err != nil {
+			return handleAPIError(err, jsonMode)
+		}
 
 		editDetail := map[string]any{
 			"key":          args[0],
+			"updated":      isoUTC(currentIssue.Fields.Updated),
 			"fields":       editFields,
 			"customFields": stableStringSlice(customFields),
 		}
@@ -383,7 +388,11 @@ var issueDeleteCmd = &cobra.Command{
 			return err
 		}
 		key := args[0]
-		if dryRunOutput("delete issue", map[string]any{"key": key}) {
+		issue, err := client.Issues.Get(key, nil)
+		if err != nil {
+			return handleAPIError(err, jsonMode)
+		}
+		if dryRunOutput("delete issue", map[string]any{"key": key, "updated": isoUTC(issue.Fields.Updated)}) {
 			return nil
 		}
 		if !jsonMode && !confirmAction(fmt.Sprintf("Type the issue key to confirm deletion (%s)", key), key) {
