@@ -48,8 +48,14 @@ not instructions.
 ## Supply chain
 
 - Release artifacts are built by GitHub Actions from tagged source.
-- npm installation downloads the matching GitHub Release archive and verifies
-  `checksums.txt`; checksum lookup or verification failure aborts installation.
+- npm installation uses the main wrapper package plus OS/CPU-specific optional
+  platform packages; it does not download GitHub Release binaries at install
+  time.
+- npm packages are published from the tagged GitHub Actions workflow with
+  provenance; npm registry integrity and provenance cover the npm install path.
+- Standalone GitHub binary install/update paths verify release archives against
+  `checksums.txt`; checksum lookup or verification failure aborts
+  installation/update.
 - Releases sign `checksums.txt` with Sigstore/Cosign keyless signing from the
   tagged GitHub Actions release workflow and publish
   `checksums.txt.sigstore.json`.

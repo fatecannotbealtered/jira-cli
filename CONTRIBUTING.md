@@ -7,7 +7,7 @@ Thank you for improving jira-cli. This document describes how to build, test, an
 ## Development setup
 
 - Go **1.25+** (see `go.mod`)
-- Optional: **Node.js 16+** if you work on npm install scripts
+- Optional: **Node.js 16+** if you work on the npm wrapper or platform-package scripts
 - Optional: **golangci-lint** (CI runs it on Linux)
 
 Clone and verify:

@@ -27,11 +27,15 @@
   "bin": {
     "jira-cli": "scripts/run.js"
   },
-  "scripts": {
-    "postinstall": "node scripts/install.js"
+  "optionalDependencies": {
+    "@fatecannotbealtered-/jira-cli-darwin-arm64": "1.1.0",
+    "@fatecannotbealtered-/jira-cli-darwin-x64": "1.1.0",
+    "@fatecannotbealtered-/jira-cli-linux-arm64": "1.1.0",
+    "@fatecannotbealtered-/jira-cli-linux-x64": "1.1.0",
+    "@fatecannotbealtered-/jira-cli-win32-arm64": "1.1.0",
+    "@fatecannotbealtered-/jira-cli-win32-x64": "1.1.0"
   },
   "files": [
-    "scripts/install.js",
     "scripts/run.js",
     "skills/",
     "README.md",
@@ -46,15 +50,6 @@
     "AGENTS.md",
     ".agent/",
     "docs/"
-  ],
-  "os": [
-    "darwin",
-    "linux",
-    "win32"
-  ],
-  "cpu": [
-    "x64",
-    "arm64"
   ],
   "engines": {
     "node": ">=16"
