@@ -17,6 +17,7 @@ Use this checklist before public pushes and before each tagged release.
 - [ ] Error codes, exit codes, and retryable flags are aligned.
 - [ ] Write commands require `--dry-run` then `--confirm <token>` in JSON mode.
 - [ ] `reference`, `context`, `doctor`, and `changelog` are available.
+- [ ] Functional Contract Coverage is 100%: public README, Skill, `reference`, `--help`, `context`, `doctor`, `changelog`, and `update` behavior has command-level tests.
 - [ ] External Jira content returned by default JSON is tagged with `_untrusted`.
 
 ## Security

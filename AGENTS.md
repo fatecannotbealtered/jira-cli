@@ -11,3 +11,5 @@ Start with `.agent/AGENT.md`, then read only the spec relevant to the task:
 
 For this tool, keep the CLI contract, README files, `skills/jira-cli/SKILL.md`,
 E2E scripts, and `CHANGELOG.md` synchronized in the same change.
+
+Before release, Functional Contract Coverage must remain 100%: every public README / Skill / reference / help / context / doctor / changelog / update behavior needs command-level tests.
