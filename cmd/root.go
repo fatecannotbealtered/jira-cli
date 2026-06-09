@@ -118,6 +118,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&quietMode, "quiet", false, "Suppress auxiliary text output (does not suppress json/raw results)")
 	rootCmd.PersistentFlags().BoolVar(&dryRun, "dry-run", false, "Show what would be done without executing")
 	rootCmd.PersistentFlags().StringVar(&confirmToken, "confirm", "", "Confirmation token returned by --dry-run for write commands")
+	installUpdateNoticeHelp(rootCmd)
 
 	cobra.OnInitialize(func() {
 		output.Quiet = false

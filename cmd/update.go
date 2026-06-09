@@ -80,25 +80,26 @@ type githubReleaseAsset struct {
 }
 
 type updateResult struct {
-	CurrentVersion    string `json:"currentVersion"`
-	LatestVersion     string `json:"latestVersion"`
-	RequestedVersion  string `json:"requestedVersion,omitempty"`
-	PreviousVersion   string `json:"previous_version,omitempty"`
-	InstalledVersion  string `json:"current_version,omitempty"`
-	KnowledgeRefresh  string `json:"knowledge_refresh,omitempty"`
-	UpdateAvailable   bool   `json:"updateAvailable"`
-	Installed         bool   `json:"installed,omitempty"`
-	CheckOnly         bool   `json:"checkOnly,omitempty"`
-	DryRun            bool   `json:"dryRun,omitempty"`
-	InstallMethod     string `json:"installMethod,omitempty"`
-	ManagerCommand    string `json:"managerCommand,omitempty"`
-	Asset             string `json:"asset,omitempty"`
-	Path              string `json:"path,omitempty"`
-	ChecksumVerified  bool   `json:"checksumVerified,omitempty"`
-	SignatureStatus   string `json:"signature_status,omitempty"`
-	SignatureVerified bool   `json:"signature_verified,omitempty"`
-	SkillSyncCommand  string `json:"skill_sync_command,omitempty"`
-	SkillSyncStatus   string `json:"skill_sync_status,omitempty"`
+	CurrentVersion    string         `json:"currentVersion"`
+	LatestVersion     string         `json:"latestVersion"`
+	RequestedVersion  string         `json:"requestedVersion,omitempty"`
+	PreviousVersion   string         `json:"previous_version,omitempty"`
+	InstalledVersion  string         `json:"current_version,omitempty"`
+	KnowledgeRefresh  string         `json:"knowledge_refresh,omitempty"`
+	UpdateAvailable   bool           `json:"updateAvailable"`
+	Installed         bool           `json:"installed,omitempty"`
+	CheckOnly         bool           `json:"checkOnly,omitempty"`
+	DryRun            bool           `json:"dryRun,omitempty"`
+	InstallMethod     string         `json:"installMethod,omitempty"`
+	ManagerCommand    string         `json:"managerCommand,omitempty"`
+	Asset             string         `json:"asset,omitempty"`
+	Path              string         `json:"path,omitempty"`
+	ChecksumVerified  bool           `json:"checksumVerified,omitempty"`
+	SignatureStatus   string         `json:"signature_status,omitempty"`
+	SignatureVerified bool           `json:"signature_verified,omitempty"`
+	SkillSyncCommand  string         `json:"skill_sync_command,omitempty"`
+	SkillSyncStatus   string         `json:"skill_sync_status,omitempty"`
+	Notices           []updateNotice `json:"notices,omitempty"`
 }
 
 func runUpdate(cmd *cobra.Command, _ []string) error {
@@ -156,6 +157,9 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 	}
 	if installMethod != "" {
 		result.ManagerCommand = managerUpdateCommand(installMethod, targetVersion)
+	}
+	if checkOnly {
+		result.Notices = updateNoticesFromResult(result, "update_check")
 	}
 
 	if checkOnly {

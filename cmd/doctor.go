@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/fatecannotbealtered/jira-cli/internal/api"
@@ -22,7 +23,7 @@ func init() {
 	rootCmd.AddCommand(doctorCmd)
 }
 
-func runDoctor(_ *cobra.Command, _ []string) error {
+func runDoctor(cmd *cobra.Command, _ []string) error {
 	type doctorCheck struct {
 		Check   string `json:"check"`
 		Status  string `json:"status"`
@@ -30,17 +31,18 @@ func runDoctor(_ *cobra.Command, _ []string) error {
 		Fix     string `json:"fix,omitempty"`
 	}
 	type doctorResult struct {
-		Checks      []doctorCheck `json:"checks"`
-		Host        string        `json:"host,omitempty"`
-		Username    string        `json:"username,omitempty"`
-		DisplayName string        `json:"displayName,omitempty"`
-		LatencyMs   int64         `json:"latency_ms,omitempty"`
+		Checks      []doctorCheck  `json:"checks"`
+		Notices     []updateNotice `json:"notices,omitempty"`
+		Host        string         `json:"host,omitempty"`
+		Username    string         `json:"username,omitempty"`
+		DisplayName string         `json:"displayName,omitempty"`
+		LatencyMs   int64          `json:"latency_ms,omitempty"`
 	}
 	addCheck := func(result *doctorResult, check, status, msg, fix string) {
 		result.Checks = append(result.Checks, doctorCheck{Check: check, Status: status, Message: msg, Fix: fix})
 	}
 
-	result := doctorResult{}
+	result := doctorResult{Notices: refreshUpdateNotices(cmd.Context(), "doctor")}
 	addVersionCheck := func() {
 		if versionMeetsMinimum(version, skillMinVersion) {
 			addCheck(&result, "version", "pass", "binary satisfies bundled skill minimum "+skillMinVersion, "")
@@ -122,6 +124,7 @@ func runDoctor(_ *cobra.Command, _ []string) error {
 	output.Success(fmt.Sprintf("Connected to %s", cfg.Host))
 	output.Success(fmt.Sprintf("Authenticated as %s (%s)", myself.DisplayName, myself.Name))
 	output.Gray(fmt.Sprintf("  Latency: %dms", latency))
+	printUpdateNoticeHint(os.Stdout, result.Notices)
 	fmt.Println()
 	return nil
 }

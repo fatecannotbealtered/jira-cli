@@ -31,6 +31,7 @@ type contextDocument struct {
 	Account     *contextAccount    `json:"account,omitempty"`
 	Errors      []string           `json:"errors,omitempty"`
 	Env         map[string]string  `json:"env"`
+	Notices     []updateNotice     `json:"notices,omitempty"`
 }
 
 type contextRuntime struct {
@@ -70,6 +71,7 @@ func runContext(_ *cobra.Command, _ []string) error {
 		Runtime:     contextRuntime{OS: runtime.GOOS, Arch: runtime.GOARCH, CWD: cwd},
 		Config:      contextConfig{ConfigFile: config.FilePath()},
 		Credentials: contextCredentials{Status: "not_configured"},
+		Notices:     readCachedUpdateNotices(),
 		Env: map[string]string{
 			"JIRA_HOST":  envPresence("JIRA_HOST"),
 			"JIRA_TOKEN": envPresence("JIRA_TOKEN"),
@@ -130,6 +132,7 @@ func printContextResult(doc contextDocument) {
 	if doc.Account != nil {
 		output.Gray(fmt.Sprintf("  Account: %s (%s)", doc.Account.DisplayName, doc.Account.Username))
 	}
+	printUpdateNoticeHint(os.Stdout, doc.Notices)
 }
 
 func envPresence(name string) string {
