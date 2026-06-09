@@ -127,7 +127,7 @@ function Test-WriteCommand {
         " issue remote-link ", " issue comment add ", " issue comment delete ", " issue worklog add ",
         " filter create ", " filter delete ",
         " sprint create ", " sprint update ", " sprint close ", " sprint move ",
-        " install-skill ", " login ", " logout ", " update "
+        " login ", " logout ", " update "
     )
     foreach ($p in $patterns) {
         if ($text.Contains($p)) { return $true }
@@ -579,7 +579,6 @@ Invoke-Test "F2" @("filter", "list", "--json")
 Write-Phase "Phase G: Auxiliary Commands"
 
 Invoke-Test "G1" @("reference")
-Invoke-Test "G2" @("install-skill", "--json")
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # PHASE H — Flag Variants (--quiet, --dry-run)

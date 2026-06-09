@@ -17,12 +17,41 @@ import (
 	"github.com/fatecannotbealtered/jira-cli/internal/config"
 )
 
+const defaultMaxRetries = 3
+
 // defaultUserAgent returns JIRA_CLI_USER_AGENT if set, otherwise a clear CLI UA.
 func defaultUserAgent() string {
 	if ua := strings.TrimSpace(os.Getenv("JIRA_CLI_USER_AGENT")); ua != "" {
 		return ua
 	}
 	return "jira-cli"
+}
+
+func maxRetries() int {
+	if s := strings.TrimSpace(os.Getenv("JIRA_CLI_MAX_RETRIES")); s != "" {
+		if n, err := strconv.Atoi(s); err == nil && n >= 0 {
+			return n
+		}
+	}
+	return defaultMaxRetries
+}
+
+func retryBaseWait() time.Duration {
+	if s := strings.TrimSpace(os.Getenv("JIRA_CLI_RETRY_BASE_MS")); s != "" {
+		if n, err := strconv.Atoi(s); err == nil && n >= 0 {
+			return time.Duration(n) * time.Millisecond
+		}
+	}
+	return time.Second
+}
+
+func retryAfterWait(h http.Header) time.Duration {
+	if ra := h.Get("Retry-After"); ra != "" {
+		if secs, err := strconv.Atoi(ra); err == nil && secs > 0 {
+			return time.Duration(secs) * time.Second
+		}
+	}
+	return retryBaseWait()
 }
 
 var (
@@ -126,8 +155,6 @@ func NewClient(cfg *config.Config) *Client {
 
 // doWithRetry executes a request with retry logic (429 Retry-After, 5xx exponential backoff).
 func (c *Client) doWithRetry(ctx context.Context, method, path string, body any) ([]byte, int, error) {
-	const maxRetries = 3
-
 	for attempt := 0; ; attempt++ {
 		var reqBody io.Reader
 		if body != nil {
@@ -165,15 +192,10 @@ func (c *Client) doWithRetry(ctx context.Context, method, path string, body any)
 
 		// HTTP 429: rate limited, read Retry-After
 		if statusCode == http.StatusTooManyRequests {
-			if attempt >= maxRetries {
+			if attempt >= maxRetries() {
 				return nil, statusCode, c.parseError(statusCode, data)
 			}
-			wait := time.Second
-			if ra := resp.Header.Get("Retry-After"); ra != "" {
-				if secs, err := strconv.Atoi(ra); err == nil && secs > 0 {
-					wait = time.Duration(secs) * time.Second
-				}
-			}
+			wait := retryAfterWait(resp.Header)
 			select {
 			case <-time.After(wait):
 			case <-ctx.Done():
@@ -184,10 +206,10 @@ func (c *Client) doWithRetry(ctx context.Context, method, path string, body any)
 
 		// HTTP 5xx: exponential backoff
 		if statusCode >= 500 {
-			if attempt >= maxRetries {
+			if attempt >= maxRetries() {
 				return nil, statusCode, c.parseError(statusCode, data)
 			}
-			wait := time.Duration(1<<uint(attempt)) * time.Second // 1s, 2s, 4s
+			wait := time.Duration(1<<uint(attempt)) * retryBaseWait()
 			select {
 			case <-time.After(wait):
 			case <-ctx.Done():
@@ -280,8 +302,6 @@ func (c *Client) Delete(path string) error {
 
 // Upload uploads a file attachment using multipart/form-data.
 func (c *Client) Upload(ctx context.Context, path, filePath string) ([]byte, error) {
-	const maxRetries = 3
-
 	for attempt := 0; ; attempt++ {
 		select {
 		case <-ctx.Done():
@@ -337,15 +357,10 @@ func (c *Client) Upload(ctx context.Context, path, filePath string) ([]byte, err
 		}
 
 		if statusCode == http.StatusTooManyRequests {
-			if attempt >= maxRetries {
+			if attempt >= maxRetries() {
 				return nil, c.parseError(statusCode, data)
 			}
-			wait := time.Second
-			if ra := resp.Header.Get("Retry-After"); ra != "" {
-				if secs, err := strconv.Atoi(ra); err == nil && secs > 0 {
-					wait = time.Duration(secs) * time.Second
-				}
-			}
+			wait := retryAfterWait(resp.Header)
 			select {
 			case <-time.After(wait):
 			case <-ctx.Done():
@@ -355,10 +370,10 @@ func (c *Client) Upload(ctx context.Context, path, filePath string) ([]byte, err
 		}
 
 		if statusCode >= 500 {
-			if attempt >= maxRetries {
+			if attempt >= maxRetries() {
 				return nil, c.parseError(statusCode, data)
 			}
-			wait := time.Duration(1<<uint(attempt)) * time.Second
+			wait := time.Duration(1<<uint(attempt)) * retryBaseWait()
 			select {
 			case <-time.After(wait):
 			case <-ctx.Done():

@@ -14,6 +14,10 @@ import (
 	"github.com/fatecannotbealtered/jira-cli/internal/output"
 )
 
+func init() {
+	_ = os.Setenv("JIRA_CLI_RETRY_BASE_MS", "0")
+}
+
 // mockJiraServer starts an httptest TLS server and sets JIRA_HOST/JIRA_TOKEN env vars.
 // Requires TestMain (search_auth_test.go) to set InsecureSkipVerify on DefaultTransport.
 func mockJiraServer(t *testing.T, handler http.HandlerFunc) *httptest.Server {
@@ -263,7 +267,7 @@ func commandTokens(args []string) []string {
 func tokensAreWriteCommand(tokens []string) bool {
 	if len(tokens) == 1 {
 		switch tokens[0] {
-		case "login", "logout", "install-skill", "update":
+		case "login", "logout", "update":
 			return true
 		}
 	}

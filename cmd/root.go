@@ -93,13 +93,13 @@ var execCmd *cobra.Command
 
 var rootCmd = &cobra.Command{
 	Use:           "jira-cli",
-	Short:         "Full-featured Jira Data Center CLI for humans and AI Agents",
+	Short:         "Jira Data Center CLI for AI Agents",
 	Version:       version,
 	SilenceErrors: true,
 	SilenceUsage:  true,
 	Long: fmt.Sprintf("\n  %s\n  %s",
 		output.FormatCyanBold("jira-cli"),
-		output.FormatGray("Full Jira Data Center control from your terminal")),
+		output.FormatGray("Agent-native Jira Data Center control")),
 }
 
 func init() {

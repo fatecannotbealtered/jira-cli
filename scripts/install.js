@@ -1,6 +1,10 @@
 #!/usr/bin/env node
 "use strict";
 
+// postinstall downloader for the prebuilt jira-cli binary.
+// Language-agnostic: the release archive may hold a Go OR Python (e.g. PyInstaller) binary;
+// this script only cares that bin/jira-cli[.exe] ends up in place.
+
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
@@ -11,41 +15,39 @@ const VERSION = require("../package.json").version;
 const REPO = "fatecannotbealtered/jira-cli";
 const NAME = "jira-cli";
 
-const PLATFORM_MAP = {
-  darwin: "darwin",
-  linux: "linux",
-  win32: "windows",
-};
+// Env overrides: skip entirely (offline / source build / CI), or force a re-download.
+const SKIP = process.env["JIRA_CLI_SKIP_INSTALL"] || process.env.SKIP_INSTALL;
+const FORCE = process.env["JIRA_CLI_FORCE_INSTALL"];
 
-const ARCH_MAP = {
-  x64: "amd64",
-  arm64: "arm64",
-};
+const PLATFORM_MAP = { darwin: "darwin", linux: "linux", win32: "windows" };
+const ARCH_MAP = { x64: "amd64", arm64: "arm64" };
 
 const platform = PLATFORM_MAP[process.platform];
 let arch = ARCH_MAP[process.arch];
 
-// Windows ARM64: fall back to amd64 (runs via emulation)
+// Windows on ARM64 runs amd64 binaries transparently via emulation; no native arm64 build needed.
 if (process.platform === "win32" && process.arch === "arm64") {
-  console.log("Windows ARM64 detected, falling back to x64 binary (runs via emulation)");
+  console.log("Windows ARM64 detected, falling back to amd64 binary (runs via emulation)");
   arch = "amd64";
-}
-
-if (!platform || !arch) {
-  console.error(`Unsupported platform: ${process.platform}-${process.arch}`);
-  console.error(`\nManually download from:\n  https://github.com/${REPO}/releases`);
-  process.exit(1);
 }
 
 const isWindows = process.platform === "win32";
 const ext = isWindows ? ".zip" : ".tar.gz";
 const archiveName = `${NAME}-${VERSION}-${platform}-${arch}${ext}`;
 const GITHUB_URL = `https://github.com/${REPO}/releases/download/v${VERSION}/${archiveName}`;
+const CHECKSUM_URL = `https://github.com/${REPO}/releases/download/v${VERSION}/checksums.txt`;
 
 const binDir = path.join(__dirname, "..", "bin");
 const dest = path.join(binDir, NAME + (isWindows ? ".exe" : ""));
 
-fs.mkdirSync(binDir, { recursive: true });
+function manualHint() {
+  return (
+    `\nDownload the binary manually and place it at:\n  ${dest}\n` +
+    `Release page:\n  https://github.com/${REPO}/releases/tag/v${VERSION}\n` +
+    `Direct archive:\n  ${GITHUB_URL}\n` +
+    `Then unpack it and (on Unix) run: chmod +x "${dest}"\n`
+  );
+}
 
 function download(url, destPath) {
   const args = [
@@ -60,71 +62,78 @@ function download(url, destPath) {
 }
 
 function verifyChecksum(filePath, expectedHash) {
-  const fileBuffer = fs.readFileSync(filePath);
-  const hash = crypto.createHash("sha256").update(fileBuffer).digest("hex");
+  const hash = crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
   if (hash !== expectedHash) {
-    throw new Error(
-      `Checksum mismatch!\n  Expected: ${expectedHash}\n  Actual:   ${hash}`
-    );
+    throw new Error(`Checksum mismatch!\n  Expected: ${expectedHash}\n  Actual:   ${hash}`);
   }
 }
 
 function install() {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "jira-cli-"));
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), `${NAME}-`));
   const archivePath = path.join(tmpDir, archiveName);
-  const checksumURL = `https://github.com/${REPO}/releases/download/v${VERSION}/checksums.txt`;
   const checksumPath = path.join(tmpDir, "checksums.txt");
 
   try {
     console.log(`Downloading ${NAME} v${VERSION} for ${platform}-${arch}...`);
     download(GITHUB_URL, archivePath);
+    download(CHECKSUM_URL, checksumPath);
 
-    download(checksumURL, checksumPath);
-    const checksumContent = fs.readFileSync(checksumPath, "utf8");
-    const line = checksumContent
-      .split("\n")
-      .find((l) => {
-        const fields = l.trim().split(/\s+/);
-        return fields.length >= 2 && fields[fields.length - 1] === archiveName;
-      });
-    if (!line) {
-      throw new Error(`Archive ${archiveName} not found in checksums.txt`);
+    // Find the SHA256 entry for our archive; missing entry is a hard fail (can't verify integrity).
+    let expectedHash = "";
+    for (const rawLine of fs.readFileSync(checksumPath, "utf8").split("\n")) {
+      const fields = rawLine.trim().split(/\s+/);
+      if (fields.length >= 2 && fields[fields.length - 1] === archiveName) {
+        expectedHash = fields[0];
+        break;
+      }
     }
-    const expectedHash = line.trim().split(/\s+/)[0];
+    if (!expectedHash) {
+      throw new Error(`No checksum entry for ${archiveName} in checksums.txt`);
+    }
     verifyChecksum(archivePath, expectedHash);
-    console.log("✔ Checksum verified");
+    console.log("Checksum verified");
 
-    // Extract binary
     if (isWindows) {
       execFileSync("powershell", [
         "-Command",
         `Expand-Archive -Path '${archivePath}' -DestinationPath '${tmpDir}' -Force`,
       ], { stdio: "ignore" });
     } else {
-      execFileSync("tar", ["-xzf", archivePath, "-C", tmpDir], {
-        stdio: "ignore",
-      });
+      execFileSync("tar", ["-xzf", archivePath, "-C", tmpDir], { stdio: "ignore" });
     }
 
-    const binaryName = NAME + (isWindows ? ".exe" : "");
-    const extractedBinary = path.join(tmpDir, binaryName);
-
-    fs.copyFileSync(extractedBinary, dest);
-    if (!isWindows) {
-      fs.chmodSync(dest, 0o755);
-    }
-    console.log(`✔ ${NAME} v${VERSION} installed successfully`);
+    fs.mkdirSync(binDir, { recursive: true });
+    fs.copyFileSync(path.join(tmpDir, NAME + (isWindows ? ".exe" : "")), dest);
+    if (!isWindows) fs.chmodSync(dest, 0o755);
+    console.log(`${NAME} v${VERSION} installed successfully`);
   } finally {
+    // Always clean the tmpdir, even on failure.
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
+}
+
+// --- entry ---
+
+if (SKIP) {
+  console.log(`Skipping ${NAME} binary install (JIRA_CLI_SKIP_INSTALL / SKIP_INSTALL set).`);
+  process.exit(0);
+}
+
+if (fs.existsSync(dest) && !FORCE) {
+  console.log(`${NAME} binary already present; skipping download (set JIRA_CLI_FORCE_INSTALL=1 to redownload).`);
+  process.exit(0);
+}
+
+if (!platform || !arch) {
+  console.error(`Unsupported platform: ${process.platform}-${process.arch}`);
+  console.error(manualHint());
+  process.exit(1);
 }
 
 try {
   install();
 } catch (err) {
   console.error(`Failed to install ${NAME}:`, err.message);
-  console.error(
-    `\nManually download from:\n  https://github.com/${REPO}/releases\n`
-  );
+  console.error(manualHint());
   process.exit(1);
 }

@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Added runtime `changelog [--since]` output derived from `CHANGELOG.md`, plus an embedded changelog source for built binaries.
 - Added repository standard files for the AI-native tool skeleton: `AGENTS.md`, `NOTICE.md`, `CODE_OF_CONDUCT.md`, `docs/COMPATIBILITY.md`, `docs/E2E.md`, and `docs/OPEN_SOURCE_CHECKLIST.md`.
-- Added bundled Skill version negotiation via `metadata.openclaw.requires.min_version` and a `doctor` version check.
+- Added bundled Skill version negotiation via `metadata.requires.min_version` and a `doctor` version check.
 
 ### Changed
 
@@ -117,7 +117,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Document `issue delete --dry-run` skips confirmation; remove misleading `sprint close --force` wording.
 - Add `epic list` / `epic issues` to README; document `filter run --raw/--fields`.
 - Document stdout (success JSON) vs stderr (error JSON); `doctor` exit code and `authValid` checks.
-- Note npm install requires `curl`; add `install-skill` and `issue list` vs `search` JSON/jq examples.
+- Note npm install requires `curl`; add `issue list` vs `search` JSON/jq examples.
 
 ## [1.0.2] - 2026-05-14
 

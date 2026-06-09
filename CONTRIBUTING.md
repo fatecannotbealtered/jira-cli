@@ -6,7 +6,7 @@ Thank you for improving jira-cli. This document describes how to build, test, an
 
 ## Development setup
 
-- Go **1.24+** (see `go.mod`)
+- Go **1.25+** (see `go.mod`)
 - Optional: **Node.js 16+** if you work on npm install scripts
 - Optional: **golangci-lint** (CI runs it on Linux)
 
@@ -51,9 +51,9 @@ CI mirrors `.github/workflows/ci.yml`: tidy modules, `gofmt` check (Linux), gola
 
 ## AI Agent skill bundle
 
-Bundled skills live under `skills/`. After editing, run `jira-cli install-skill` from a built binary (or from repo root with `./skills`) to confirm files copy correctly. npm installs place the binary under `bin/` and skills under `../skills` relative to the binary; the CLI resolves both layouts.
+Bundled skills live under `skills/`. After editing, verify the Skill files are included with `npm pack --dry-run --json`; initial Skill installation is handled by `npx skills add ...`, not by the Jira CLI binary.
 
-The Skill must stay small and defer command/flag/schema truth to `jira-cli reference`. If the Skill starts using a new command or output field, raise `metadata.openclaw.requires.min_version` and verify `jira-cli doctor` reports the bundled minimum.
+The Skill must stay small and defer command/flag/schema truth to `jira-cli reference`. If the Skill starts using a new command or output field, raise `metadata.requires.min_version` and verify `jira-cli doctor` reports the bundled minimum.
 
 ## Security
 

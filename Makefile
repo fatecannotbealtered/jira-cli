@@ -7,29 +7,36 @@ BIN_DIR     := bin
 VERSION     ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS     := -s -w -X $(MODULE)/cmd.version=$(VERSION)
 
-.PHONY: build test vet lint fmt clean install snapshot help
+.PHONY: build test vet lint fmt check-fmt check clean install snapshot help
 
 ## build: compile the binary into bin/
 build:
 	@mkdir -p $(BIN_DIR)
 	go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/$(BINARY_NAME) $(CMD_PATH)
 
-## test: check formatting, vet, and run all unit tests with race detection
-test: fmt vet
+## test: run all unit tests with race detection
+test: vet
 	go test -race ./...
 
 ## vet: run static analysis
 vet:
 	go vet ./...
 
+## check-fmt: verify formatting (fails if unformatted, Unix only)
+check-fmt:
+	@test -z "$$(gofmt -l .)" || (echo "Run 'make fmt' to fix formatting" && gofmt -l . && exit 1)
+
+## fmt: apply gofmt formatting
+fmt:
+	gofmt -w .
+
+## check: run formatting check + vet (Unix only)
+check: check-fmt vet
+
 ## lint: run golangci-lint (install if missing)
 lint:
 	@which golangci-lint > /dev/null 2>&1 || (echo "Installing golangci-lint..." && go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest)
 	golangci-lint run ./...
-
-## fmt: check formatting (fails if unformatted)
-fmt:
-	@test -z "$$(gofmt -l .)" || (echo "Run gofmt -w . to fix formatting" && gofmt -l . && exit 1)
 
 ## clean: remove build artifacts
 clean:

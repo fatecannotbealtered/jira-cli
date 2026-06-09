@@ -1,7 +1,7 @@
 {
   "name": "@fatecannotbealtered-/jira-cli",
   "version": "1.1.0",
-  "description": "Full-featured Jira Data Center CLI for humans and AI Agents — manage issues, sprints, boards, epics, projects, users, and filters from your terminal",
+  "description": "Jira Data Center CLI for AI Agents - manage issues, sprints, boards, epics, projects, users, filters, worklogs, links, and attachments",
   "keywords": [
     "jira",
     "cli",
@@ -9,10 +9,9 @@
     "ai-agent",
     "devtools",
     "sprint",
-    "issue-tracker",
-    "openclaw"
+    "issue-tracker"
   ],
-  "author": "guosong6886@gmail.com",
+  "author": "Sean Guo",
   "homepage": "https://github.com/fatecannotbealtered/jira-cli#readme",
   "bugs": {
     "url": "https://github.com/fatecannotbealtered/jira-cli/issues"
@@ -22,6 +21,9 @@
     "url": "git+https://github.com/fatecannotbealtered/jira-cli.git"
   },
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "bin": {
     "jira-cli": "scripts/run.js"
   },
@@ -32,14 +34,17 @@
     "scripts/install.js",
     "scripts/run.js",
     "skills/",
-    ".agent/",
-    "AGENTS.md",
+    "README.md",
     "README_zh.md",
+    "*_zh.md",
+    "LICENSE",
+    "NOTICE.md",
     "CHANGELOG.md",
     "CONTRIBUTING.md",
     "SECURITY.md",
-    "NOTICE.md",
     "CODE_OF_CONDUCT.md",
+    "AGENTS.md",
+    ".agent/",
     "docs/"
   ],
   "os": [

@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -167,102 +165,6 @@ func TestPrintReference_WritesMarkdown(t *testing.T) {
 	if !strings.Contains(out, "mini sub") {
 		t.Fatalf("expected subcommand in reference, got: %s", out)
 	}
-}
-
-// ─── install-skill remaining paths ───────────────────────────────────────────
-
-func TestRunInstallSkill_ExecutableError(t *testing.T) {
-	orig := osExecutable
-	defer func() { osExecutable = orig }()
-	osExecutable = func() (string, error) {
-		return "", errors.New("no executable")
-	}
-	runRootExpectSilent(t, ExitBadArgs, "--format", "text", "install-skill")
-}
-
-func TestRunInstallSkill_WalkCopyError(t *testing.T) {
-	workDir := setupSkillsWorkdirForGap(t)
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("USERPROFILE", home)
-
-	// Make destination parent a file so copy/mkdir fails during walk.
-	targetFile := filepath.Join(home, ".openclaw")
-	if err := os.WriteFile(targetFile, []byte("x"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	t.Chdir(workDir)
-	runRootExpectSilent(t, ExitBadArgs, "--format", "text", "install-skill")
-}
-
-func TestRunInstallSkill_CopyFileErrorDuringWalk(t *testing.T) {
-	workDir := setupSkillsWorkdirForGap(t)
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("USERPROFILE", home)
-	t.Chdir(workDir)
-
-	origCopy := copyFileFn
-	defer func() { copyFileFn = origCopy }()
-	copyFileFn = func(_, _ string) error {
-		return errors.New("copy blocked")
-	}
-	runRootExpectSilent(t, ExitBadArgs, "--format", "text", "install-skill")
-}
-
-func TestRunInstallSkill_WalkStatError(t *testing.T) {
-	workDir := setupSkillsWorkdirForGap(t)
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("USERPROFILE", home)
-	t.Chdir(workDir)
-
-	origWalk := filepathWalk
-	defer func() { filepathWalk = origWalk }()
-	filepathWalk = func(_ string, fn filepath.WalkFunc) error {
-		return fn(filepath.Join(workDir, "skills", "missing"), nil, os.ErrNotExist)
-	}
-	runRootExpectSilent(t, ExitBadArgs, "--format", "text", "install-skill")
-}
-
-func TestRunInstallSkill_WalkDirOnly(t *testing.T) {
-	workDir := t.TempDir()
-	emptySkills := filepath.Join(workDir, "skills", "jira-cli")
-	if err := os.MkdirAll(emptySkills, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Chdir(workDir)
-	runRootExpectSilent(t, ExitBadArgs, "--format", "text", "install-skill")
-}
-
-func TestRunInstallSkill_MkdirDuringWalkFails(t *testing.T) {
-	workDir := setupSkillsWorkdirForGap(t)
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("USERPROFILE", home)
-	t.Chdir(workDir)
-
-	targetBlock := filepath.Join(home, ".openclaw", "skills", "jira-cli")
-	if err := os.MkdirAll(filepath.Dir(targetBlock), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(targetBlock, []byte("not a dir"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	runRootExpectSilent(t, ExitBadArgs, "--format", "text", "install-skill")
-}
-
-func setupSkillsWorkdirForGap(t *testing.T) string {
-	t.Helper()
-	workDir := t.TempDir()
-	skillsRoot := filepath.Join(workDir, "skills", "jira-cli")
-	if err := os.MkdirAll(skillsRoot, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(skillsRoot, "SKILL.md"), []byte("# skill"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	return workDir
 }
 
 // ─── login ReadPassword error ─────────────────────────────────────────────────

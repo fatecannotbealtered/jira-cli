@@ -1,18 +1,44 @@
+# Common base — concatenate with template/<lang>/.gitignore
+
+node_modules/
+.env
+.env.local
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+.claude/
+
+# Go-specific — append to common/.gitignore
+
 # Build output
 bin/
 dist/
 
-# Node.js
-node_modules/
-
 # Windows executables
 *.exe
 
-# Go test cache / coverage (root-level artifacts; some lack .out on Windows)
-*.out
+# Go test cache / coverage
 *.test
-*.test.exe
+*.out
 coverage.txt
+coverage.out
+
+# goreleaser
+.goreleaser-dist/
+
+# Derived release artifact — must not be committed
+release-notes.md
+
+# --- project-specific ---
+
+# Windows test executables
+*.test.exe
+
+# Repo-specific coverage artifacts
 /coverage
 /coverage.*
 /*_cov
@@ -37,30 +63,8 @@ coverage.txt
 /cov_editraw
 /cover
 
-# goreleaser
-.goreleaser-dist/
-
-# Editor / OS
-.DS_Store
-.idea/
-.vscode/
-*.swp
-*.swo
-*~
-Thumbs.db
-
-# Environment
-.env
-.env.local
-
 # Local E2E secrets (never commit)
 scripts/e2e.local.ps1
 
 # E2E test report (generated)
 scripts/e2e-report.csv
-
-# GoReleaser release notes (generated during CI)
-release-notes.md
-
-# Claude Code worktrees
-.claude/
