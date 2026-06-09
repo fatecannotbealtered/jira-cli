@@ -3,6 +3,7 @@ package cmd
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -23,6 +24,7 @@ func resetUpdateState(t *testing.T) {
 	oldGOOS := updateGOOS
 	oldGOARCH := updateGOARCH
 	oldGetenv := updateGetenv
+	oldSkillSync := updateSkillSync
 	t.Cleanup(func() {
 		version = oldVersion
 		updateHTTPClient = oldClient
@@ -31,11 +33,13 @@ func resetUpdateState(t *testing.T) {
 		updateGOOS = oldGOOS
 		updateGOARCH = oldGOARCH
 		updateGetenv = oldGetenv
+		updateSkillSync = oldSkillSync
 	})
 	version = "1.0.0"
 	updateGOOS = func() string { return "windows" }
 	updateGOARCH = func() string { return "amd64" }
 	updateGetenv = func(string) string { return "" }
+	updateSkillSync = func(context.Context, string) error { return nil }
 }
 
 func newUpdateTestServer(t *testing.T, releaseVersion string, archive []byte) *httptest.Server {

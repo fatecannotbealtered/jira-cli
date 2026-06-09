@@ -18,7 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Expanded `jira-cli reference` with tool/version metadata, security tier, command type, permission tier, blast radius, output schema, exit codes, and error codes.
 - JSON IDs for flattened boards and sprints are now strings, and Jira timestamps returned in flattened issue/comment/worklog/attachment output are normalized to ISO 8601 UTC where possible.
 - JSON write confirmation tokens now bind command context, configured host, token fingerprint, and available resource state to reduce stale or cross-context confirmation risk.
-- README, README_zh, CONTRIBUTING, and the bundled Skill now describe stdout JSON envelopes, `doctor` checks, dry-run/confirm writes, runtime changelog refresh, encrypted config, and `_untrusted` fields.
+- Self-update now syncs the whole Agent Skill directory through `npx skills add fatecannotbealtered/jira-cli -y -g` and reports `skill_sync_status`.
+- README, README_zh, CONTRIBUTING, `.agent/` specs, and the bundled Skill now describe stdout JSON envelopes, `doctor` checks, dry-run/confirm writes, runtime changelog refresh, encrypted config, Skill sync, and `_untrusted` fields.
 - The E2E PowerShell scripts unwrap JSON envelopes and exercise write commands through `--dry-run` then `--confirm` in JSON mode.
 
 ### Fixed
@@ -30,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 - Saved config tokens are written as AES-256-GCM encrypted `token_enc` values; legacy plaintext config remains readable for migration.
+- Release checksums are signed with Sigstore/Cosign, and install/update paths report signature verification status separately from checksum verification.
 - npm install checksum verification now fails closed, with `package-lock.json` committed and npm audit added to CI/release checks.
 - Default JSON output tags Jira-controlled issue summaries/descriptions, comments, worklog comments, and attachment filenames with `_untrusted` where returned.
 

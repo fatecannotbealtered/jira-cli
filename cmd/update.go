@@ -13,8 +13,10 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	pathpkg "path"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -25,14 +27,16 @@ import (
 )
 
 const (
-	updateRepo            = "fatecannotbealtered/jira-cli"
-	updateAPIBase         = "https://api.github.com/repos/" + updateRepo
-	updatePackageName     = "@fatecannotbealtered-/jira-cli"
-	updateBinaryName      = "jira-cli"
-	maxReleaseJSONBytes   = 5 << 20
-	maxChecksumFileBytes  = 1 << 20
-	maxArchiveBytes       = 100 << 20
-	maxExtractedBinaryLen = 100 << 20
+	updateRepo              = "fatecannotbealtered/jira-cli"
+	updateAPIBase           = "https://api.github.com/repos/" + updateRepo
+	updatePackageName       = "@fatecannotbealtered-/jira-cli"
+	updateBinaryName        = "jira-cli"
+	updateSkillRepo         = updateRepo
+	maxReleaseJSONBytes     = 5 << 20
+	maxChecksumFileBytes    = 1 << 20
+	maxSignatureBundleBytes = 1 << 20
+	maxArchiveBytes         = 100 << 20
+	maxExtractedBinaryLen   = 100 << 20
 )
 
 var (
@@ -42,13 +46,15 @@ var (
 	updateGOOS       = func() string { return runtime.GOOS }
 	updateGOARCH     = func() string { return runtime.GOARCH }
 	updateGetenv     = os.Getenv
+	updateSkillSync  = runUpdateSkillSync
 )
 
 var updateCmd = &cobra.Command{
 	Use:   "update",
 	Short: "Update jira-cli to a GitHub release",
 	Long: `Update jira-cli by downloading the matching GitHub Release asset,
-verifying checksums.txt, and replacing the current standalone binary.
+verifying the signed checksums.txt when possible, verifying the archive checksum,
+and replacing the current standalone binary.
 
 Package-manager installs are detected where possible. For npm installs, use
 npm install -g @fatecannotbealtered-/jira-cli@latest unless --force is set.`,
@@ -74,21 +80,25 @@ type githubReleaseAsset struct {
 }
 
 type updateResult struct {
-	CurrentVersion   string `json:"currentVersion"`
-	LatestVersion    string `json:"latestVersion"`
-	RequestedVersion string `json:"requestedVersion,omitempty"`
-	PreviousVersion  string `json:"previous_version,omitempty"`
-	InstalledVersion string `json:"current_version,omitempty"`
-	KnowledgeRefresh string `json:"knowledge_refresh,omitempty"`
-	UpdateAvailable  bool   `json:"updateAvailable"`
-	Installed        bool   `json:"installed,omitempty"`
-	CheckOnly        bool   `json:"checkOnly,omitempty"`
-	DryRun           bool   `json:"dryRun,omitempty"`
-	InstallMethod    string `json:"installMethod,omitempty"`
-	ManagerCommand   string `json:"managerCommand,omitempty"`
-	Asset            string `json:"asset,omitempty"`
-	Path             string `json:"path,omitempty"`
-	ChecksumVerified bool   `json:"checksumVerified,omitempty"`
+	CurrentVersion    string `json:"currentVersion"`
+	LatestVersion     string `json:"latestVersion"`
+	RequestedVersion  string `json:"requestedVersion,omitempty"`
+	PreviousVersion   string `json:"previous_version,omitempty"`
+	InstalledVersion  string `json:"current_version,omitempty"`
+	KnowledgeRefresh  string `json:"knowledge_refresh,omitempty"`
+	UpdateAvailable   bool   `json:"updateAvailable"`
+	Installed         bool   `json:"installed,omitempty"`
+	CheckOnly         bool   `json:"checkOnly,omitempty"`
+	DryRun            bool   `json:"dryRun,omitempty"`
+	InstallMethod     string `json:"installMethod,omitempty"`
+	ManagerCommand    string `json:"managerCommand,omitempty"`
+	Asset             string `json:"asset,omitempty"`
+	Path              string `json:"path,omitempty"`
+	ChecksumVerified  bool   `json:"checksumVerified,omitempty"`
+	SignatureStatus   string `json:"signature_status,omitempty"`
+	SignatureVerified bool   `json:"signature_verified,omitempty"`
+	SkillSyncCommand  string `json:"skill_sync_command,omitempty"`
+	SkillSyncStatus   string `json:"skill_sync_status,omitempty"`
 }
 
 func runUpdate(cmd *cobra.Command, _ []string) error {
@@ -118,6 +128,7 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 	if !ok {
 		return handleUpdateError(fmt.Errorf("release %s has no checksums.txt asset", release.TagName), ExitNetwork)
 	}
+	signatureBundleAsset, signatureBundleFound := release.assetByName("checksums.txt.sigstore.json")
 
 	currentVersion := version
 	available := updateAvailable(currentVersion, latestVersion)
@@ -139,6 +150,9 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 		InstallMethod:    installMethod,
 		Asset:            archiveName,
 		Path:             exePath,
+		SignatureStatus:  "not_checked",
+		SkillSyncCommand: updateSkillSyncCommand(),
+		SkillSyncStatus:  "not_run",
 	}
 	if installMethod != "" {
 		result.ManagerCommand = managerUpdateCommand(installMethod, targetVersion)
@@ -180,6 +194,10 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return handleUpdateError(err, ExitNetwork)
 	}
+	signatureStatus, err := verifyChecksumSignature(cmd.Context(), checksumData, signatureBundleAsset, signatureBundleFound)
+	if err != nil {
+		return handleUpdateError(err, ExitNetwork)
+	}
 	if err := verifyArchiveChecksum(archiveName, archiveData, checksumData); err != nil {
 		return handleUpdateError(err, ExitNetwork)
 	}
@@ -190,11 +208,17 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 	if err := replaceExecutable(exePath, binaryData); err != nil {
 		return handleUpdateError(err, ExitBadArgs)
 	}
+	if err := updateSkillSync(cmd.Context(), updateSkillRepo); err != nil {
+		return handleUpdateError(fmt.Errorf("syncing skill directory: %w", err), ExitNetwork)
+	}
 
 	result.Installed = true
 	result.ChecksumVerified = true
+	result.SignatureStatus = signatureStatus
+	result.SignatureVerified = signatureStatus == "verified"
 	result.PreviousVersion = currentVersion
 	result.InstalledVersion = latestVersion
+	result.SkillSyncStatus = "synced"
 	result.KnowledgeRefresh = fmt.Sprintf("run \"jira-cli changelog --since %s\" before continuing", normalizeVersion(currentVersion))
 	printUpdateResult(result)
 	return nil
@@ -273,9 +297,12 @@ func printUpdateDryRunResult(result updateResult) {
 		expiresAt := time.Now().UTC().Add(15 * time.Minute)
 		output.PrintJSON(map[string]any{
 			"preview": map[string]any{
-				"action":  "update jira-cli",
-				"changes": []map[string]any{{"operation": "replace executable", "target": result.Path}},
-				"result":  result,
+				"action": "update jira-cli",
+				"changes": []map[string]any{
+					{"operation": "replace executable", "target": result.Path},
+					{"operation": "sync skill directory", "command": result.SkillSyncCommand},
+				},
+				"result": result,
 			},
 			"confirm_token": generateConfirmToken("update jira-cli", updateConfirmDetail(result), expiresAt),
 			"expires_at":    expiresAt.Format(time.RFC3339),
@@ -292,7 +319,89 @@ func updateConfirmDetail(result updateResult) map[string]any {
 		"requestedVersion": result.RequestedVersion,
 		"asset":            result.Asset,
 		"path":             result.Path,
+		"skillSyncCommand": result.SkillSyncCommand,
 	}
+}
+
+func updateSkillSyncCommand() string {
+	return "npx skills add " + updateSkillRepo + " -y -g"
+}
+
+func runUpdateSkillSync(ctx context.Context, repo string) error {
+	command := exec.CommandContext(ctx, "npx", "skills", "add", repo, "-y", "-g")
+	outputBytes, err := command.CombinedOutput()
+	if err != nil {
+		msg := strings.TrimSpace(string(outputBytes))
+		if msg != "" {
+			return fmt.Errorf("%w: %s", err, truncateForUpdateError(msg, 300))
+		}
+		return err
+	}
+	return nil
+}
+
+func truncateForUpdateError(s string, n int) string {
+	s = strings.TrimSpace(s)
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "..."
+}
+
+func verifyChecksumSignature(ctx context.Context, checksumData []byte, bundleAsset githubReleaseAsset, bundleFound bool) (string, error) {
+	if !bundleFound {
+		if updateRequireSignature() {
+			return "missing_bundle", fmt.Errorf("release checksums.txt signature bundle not found")
+		}
+		return "missing_bundle", nil
+	}
+	if _, err := exec.LookPath("cosign"); err != nil {
+		if updateRequireSignature() {
+			return "cosign_missing", fmt.Errorf("cosign is not installed; checksum signature verification cannot run")
+		}
+		return "skipped_cosign_missing", nil
+	}
+
+	bundleData, err := downloadUpdateURL(ctx, bundleAsset.BrowserDownloadURL, maxSignatureBundleBytes)
+	if err != nil {
+		return "download_failed", fmt.Errorf("downloading checksum signature bundle: %w", err)
+	}
+	tmpDir, err := os.MkdirTemp("", "jira-cli-signature-*")
+	if err != nil {
+		return "failed", fmt.Errorf("creating signature temp dir: %w", err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	checksumPath := filepath.Join(tmpDir, "checksums.txt")
+	bundlePath := filepath.Join(tmpDir, "checksums.txt.sigstore.json")
+	if err := os.WriteFile(checksumPath, checksumData, 0o600); err != nil {
+		return "failed", fmt.Errorf("writing checksum temp file: %w", err)
+	}
+	if err := os.WriteFile(bundlePath, bundleData, 0o600); err != nil {
+		return "failed", fmt.Errorf("writing checksum signature bundle: %w", err)
+	}
+
+	identity := "^https://github\\.com/" + regexp.QuoteMeta(updateRepo) + "/\\.github/workflows/release\\.yml@refs/tags/v.*$"
+	command := exec.CommandContext(ctx, "cosign",
+		"verify-blob",
+		"--bundle", bundlePath,
+		"--certificate-identity-regexp", identity,
+		"--certificate-oidc-issuer", "https://token.actions.githubusercontent.com",
+		checksumPath,
+	)
+	outputBytes, err := command.CombinedOutput()
+	if err != nil {
+		msg := strings.TrimSpace(string(outputBytes))
+		if msg != "" {
+			return "failed", fmt.Errorf("verifying checksum signature: %w: %s", err, truncateForUpdateError(msg, 300))
+		}
+		return "failed", fmt.Errorf("verifying checksum signature: %w", err)
+	}
+	return "verified", nil
+}
+
+func updateRequireSignature() bool {
+	return updateGetenv("JIRA_CLI_REQUIRE_SIGNATURE") == "1"
 }
 
 func fetchUpdateRelease(ctx context.Context, targetVersion string) (*githubRelease, error) {

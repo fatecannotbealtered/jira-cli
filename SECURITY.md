@@ -50,6 +50,11 @@ not instructions.
 - Release artifacts are built by GitHub Actions from tagged source.
 - npm installation downloads the matching GitHub Release archive and verifies
   `checksums.txt`; checksum lookup or verification failure aborts installation.
+- Releases sign `checksums.txt` with Sigstore/Cosign keyless signing from the
+  tagged GitHub Actions release workflow and publish
+  `checksums.txt.sigstore.json`.
+- Self-update results must sync the whole `skills/jira-cli/` directory or return
+  a `skill_sync_command` equivalent to `npx skills add fatecannotbealtered/jira-cli -y -g`.
 - npm metadata is locked with `package-lock.json`, and CI runs `npm audit
   --audit-level=high`.
 
