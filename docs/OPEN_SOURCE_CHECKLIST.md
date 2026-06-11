@@ -18,6 +18,8 @@ Use this checklist before public pushes and before each tagged release.
 - [ ] Write commands require `--dry-run` then `--confirm <token>` in JSON mode.
 - [ ] `reference`, `context`, `doctor`, and `changelog` are available.
 - [ ] Functional Contract Coverage is 100%: public README, Skill, `reference`, `--help`, `context`, `doctor`, `changelog`, and `update` behavior has command-level tests.
+- [ ] `reference.release_readiness.level` is accurate: `stable` has FCC 100%, mock upstream/contract tests, and recorded live smoke/E2E evidence; missing live evidence is `beta`; missing command-level coverage is `unpublishable`.
+- [ ] `doctor` includes a `release_readiness` check whose status matches the declared release level.
 - [ ] External Jira content returned by default JSON is tagged with `_untrusted`.
 
 ## Security

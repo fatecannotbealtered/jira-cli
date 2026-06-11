@@ -560,6 +560,19 @@ func TestDoctor_SuccessJSON(t *testing.T) {
 	if len(checks) < 3 {
 		t.Fatalf("result=%v", result)
 	}
+	foundReleaseReadiness := false
+	for _, raw := range checks {
+		check := raw.(map[string]any)
+		if check["check"] == "release_readiness" {
+			foundReleaseReadiness = true
+			if check["status"] != "warn" {
+				t.Fatalf("release_readiness check=%v", check)
+			}
+		}
+	}
+	if !foundReleaseReadiness {
+		t.Fatalf("missing release_readiness check: %v", checks)
+	}
 	if result["username"] != "jdoe" || result["displayName"] != "John Doe" {
 		t.Fatalf("user fields=%v", result)
 	}

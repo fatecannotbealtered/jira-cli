@@ -50,11 +50,15 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 			addCheck(&result, "version", "fail", "binary version "+version+" is below bundled skill minimum "+skillMinVersion, "run 'jira-cli update --check' or reinstall from npm")
 		}
 	}
+	addReleaseReadinessCheck := func() {
+		addCheck(&result, "release_readiness", releaseReadinessCheckStatus(), buildReleaseReadiness().Reason, releaseReadinessCheckFix())
+	}
 
 	cfg, err := config.Load()
 	if err != nil {
 		addCheck(&result, "config", "fail", err.Error(), "fix or remove "+config.FilePath())
 		addVersionCheck()
+		addReleaseReadinessCheck()
 		if jsonMode {
 			output.PrintJSON(result)
 		} else {
@@ -66,6 +70,7 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	if cfg.Host == "" || cfg.Token == "" {
 		addCheck(&result, "config", "fail", "Jira host/token not configured", "run 'jira-cli login --host <url> --token <pat>' or set JIRA_HOST and JIRA_TOKEN")
 		addVersionCheck()
+		addReleaseReadinessCheck()
 		if jsonMode {
 			output.PrintJSON(result)
 		} else {
@@ -91,6 +96,7 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 		addCheck(&result, "auth", "fail", err.Error(), "check PAT validity, Jira permissions, proxy, or VPN")
 		addCheck(&result, "network", "fail", err.Error(), "set HTTP_PROXY/HTTPS_PROXY if required and verify Jira is reachable")
 		addVersionCheck()
+		addReleaseReadinessCheck()
 		if jsonMode {
 			output.PrintJSON(result)
 		} else {
@@ -107,6 +113,7 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	addCheck(&result, "auth", "pass", "PAT valid", "")
 	addCheck(&result, "network", "pass", fmt.Sprintf("connected in %dms", latency), "")
 	addVersionCheck()
+	addReleaseReadinessCheck()
 	result.Username = myself.Name
 	result.DisplayName = myself.DisplayName
 

@@ -68,3 +68,16 @@ func TestCollectReferenceFlags_AllBranches(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildReferenceDocumentReleaseReadiness(t *testing.T) {
+	doc := buildReferenceDocument(rootCmd)
+	if doc.ReleaseReadiness.Level != "beta" {
+		t.Fatalf("release level = %q, want beta", doc.ReleaseReadiness.Level)
+	}
+	if !doc.ReleaseReadiness.FCCRequired || !doc.ReleaseReadiness.MockUpstreamRequired {
+		t.Fatalf("release readiness should require FCC and mock upstream tests: %+v", doc.ReleaseReadiness)
+	}
+	if !doc.ReleaseReadiness.LiveSmokeRequiredForStable || doc.ReleaseReadiness.LiveSmokeStatus != "missing" {
+		t.Fatalf("stable should require missing live smoke evidence: %+v", doc.ReleaseReadiness)
+	}
+}

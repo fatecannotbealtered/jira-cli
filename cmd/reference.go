@@ -74,13 +74,14 @@ type commandReference struct {
 }
 
 type referenceDocument struct {
-	Tool         string             `json:"tool"`
-	Version      string             `json:"version"`
-	SecurityTier string             `json:"security_tier"`
-	Root         commandReference   `json:"root"`
-	Commands     []commandReference `json:"commands"`
-	ExitCodes    map[string]string  `json:"exit_codes"`
-	ErrorCodes   map[string]string  `json:"error_codes"`
+	Tool             string             `json:"tool"`
+	Version          string             `json:"version"`
+	SecurityTier     string             `json:"security_tier"`
+	ReleaseReadiness releaseReadiness   `json:"release_readiness"`
+	Root             commandReference   `json:"root"`
+	Commands         []commandReference `json:"commands"`
+	ExitCodes        map[string]string  `json:"exit_codes"`
+	ErrorCodes       map[string]string  `json:"error_codes"`
 }
 
 var referenceCmd = &cobra.Command{
@@ -120,13 +121,14 @@ func buildReferenceDocument(root *cobra.Command) referenceDocument {
 	var commands []commandReference
 	rootRef := buildCommandReference(root, "", &commands)
 	return referenceDocument{
-		Tool:         "jira-cli",
-		Version:      root.Version,
-		SecurityTier: "T1",
-		Root:         rootRef,
-		Commands:     commands,
-		ExitCodes:    referenceExitCodes(),
-		ErrorCodes:   referenceErrorCodes(),
+		Tool:             "jira-cli",
+		Version:          root.Version,
+		SecurityTier:     "T1",
+		ReleaseReadiness: buildReleaseReadiness(),
+		Root:             rootRef,
+		Commands:         commands,
+		ExitCodes:        referenceExitCodes(),
+		ErrorCodes:       referenceErrorCodes(),
 	}
 }
 
