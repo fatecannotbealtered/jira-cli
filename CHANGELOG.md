@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Unified the golangci-lint v2 toolchain: Makefile installs from the `/v2` module path and CI uses `golangci-lint-action@v8` to match the v2 config format.
+- `update` result fields are now snake_case (`current_version`, `latest_version`, `requested_version`, `update_available`, `check_only`, `dry_run`, `install_method`, `manager_command`, `checksum_verified`); after an install, `current_version` reports the newly installed version alongside `previous_version`.
 - Expanded `jira-cli reference` with tool/version metadata, security tier, command type, permission tier, blast radius, output schema, exit codes, and error codes.
 - JSON IDs for flattened boards and sprints are now strings, and Jira timestamps returned in flattened issue/comment/worklog/attachment output are normalized to ISO 8601 UTC where possible.
 - JSON write confirmation tokens now bind command context, configured host, token fingerprint, and available resource state to reduce stale or cross-context confirmation risk.
@@ -24,16 +26,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `TestIssueCommands_NotConfigured` now isolates HOME so a developer's real `~/.jira-cli/config.json` cannot leak into the test and turn it into a network call.
 - JSON failure envelopes now include `meta.duration_ms`.
 - Agent error codes now use the CLI spec names `E_AUTH` and `E_CONFIRMATION_REQUIRED`.
 - Audit log timestamps are written in UTC and audit entries include the configured Jira host while redacting sensitive arguments.
 
 ### Security
 
+- Confirm tokens are now signed with a machine-local HMAC key (`confirm.secret`, created on first use with 0600 permissions) so they cannot be fabricated without running `--dry-run` on the same machine.
 - Saved config tokens are written as AES-256-GCM encrypted `token_enc` values; legacy plaintext config remains readable for migration.
 - Release checksums are signed with Sigstore/Cosign, and install/update paths report signature verification status separately from checksum verification.
 - npm install checksum verification now fails closed, with `package-lock.json` committed and npm audit added to CI/release checks.
 - Default JSON output tags Jira-controlled issue summaries/descriptions, comments, worklog comments, and attachment filenames with `_untrusted` where returned.
+
 
 ## [1.1.0] - 2026-06-06
 

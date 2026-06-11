@@ -323,7 +323,7 @@ func writeTempFile(t *testing.T, name, content string) string {
 }
 
 func TestIssueCommands_NotConfigured(t *testing.T) {
-	clearJiraEnv(t)
+	setupTestHome(t)
 
 	_, _, err := issueRunRoot(t, "issue", "get", sampleIssueKey)
 	if err != ErrSilent {

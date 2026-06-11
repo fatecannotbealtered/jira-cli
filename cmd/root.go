@@ -431,7 +431,7 @@ func confirmDigest(action string, detail map[string]any, expiresAt time.Time) (s
 	if err != nil {
 		return "", err
 	}
-	sum := sha256.Sum256(data)
+	sum := confirmDigest32(data)
 	return hex.EncodeToString(sum[:]), nil
 }
 

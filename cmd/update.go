@@ -80,21 +80,22 @@ type githubReleaseAsset struct {
 }
 
 type updateResult struct {
-	CurrentVersion    string         `json:"currentVersion"`
-	LatestVersion     string         `json:"latestVersion"`
-	RequestedVersion  string         `json:"requestedVersion,omitempty"`
+	// current_version is the running version before an install and the newly
+	// installed version afterwards; previous_version is set on install.
+	CurrentVersion    string         `json:"current_version"`
+	LatestVersion     string         `json:"latest_version"`
+	RequestedVersion  string         `json:"requested_version,omitempty"`
 	PreviousVersion   string         `json:"previous_version,omitempty"`
-	InstalledVersion  string         `json:"current_version,omitempty"`
 	KnowledgeRefresh  string         `json:"knowledge_refresh,omitempty"`
-	UpdateAvailable   bool           `json:"updateAvailable"`
+	UpdateAvailable   bool           `json:"update_available"`
 	Installed         bool           `json:"installed,omitempty"`
-	CheckOnly         bool           `json:"checkOnly,omitempty"`
-	DryRun            bool           `json:"dryRun,omitempty"`
-	InstallMethod     string         `json:"installMethod,omitempty"`
-	ManagerCommand    string         `json:"managerCommand,omitempty"`
+	CheckOnly         bool           `json:"check_only,omitempty"`
+	DryRun            bool           `json:"dry_run,omitempty"`
+	InstallMethod     string         `json:"install_method,omitempty"`
+	ManagerCommand    string         `json:"manager_command,omitempty"`
 	Asset             string         `json:"asset,omitempty"`
 	Path              string         `json:"path,omitempty"`
-	ChecksumVerified  bool           `json:"checksumVerified,omitempty"`
+	ChecksumVerified  bool           `json:"checksum_verified,omitempty"`
 	SignatureStatus   string         `json:"signature_status,omitempty"`
 	SignatureVerified bool           `json:"signature_verified,omitempty"`
 	SkillSyncCommand  string         `json:"skill_sync_command,omitempty"`
@@ -221,7 +222,7 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 	result.SignatureStatus = signatureStatus
 	result.SignatureVerified = signatureStatus == "verified"
 	result.PreviousVersion = currentVersion
-	result.InstalledVersion = latestVersion
+	result.CurrentVersion = latestVersion
 	result.SkillSyncStatus = "synced"
 	result.KnowledgeRefresh = fmt.Sprintf("run \"jira-cli changelog --since %s\" before continuing", normalizeVersion(currentVersion))
 	printUpdateResult(result)
@@ -267,9 +268,9 @@ func printUpdateResult(result updateResult) {
 	}
 	if result.Installed {
 		if result.UpdateAvailable {
-			output.Success(fmt.Sprintf("Updated jira-cli from %s to %s", result.CurrentVersion, result.LatestVersion))
+			output.Success(fmt.Sprintf("Updated jira-cli from %s to %s", result.PreviousVersion, result.CurrentVersion))
 		} else {
-			output.Success(fmt.Sprintf("Installed jira-cli %s over %s", result.LatestVersion, result.CurrentVersion))
+			output.Success(fmt.Sprintf("Installed jira-cli %s over %s", result.CurrentVersion, result.PreviousVersion))
 		}
 		return
 	}
