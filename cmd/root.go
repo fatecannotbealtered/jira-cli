@@ -380,11 +380,9 @@ func dryRunOutput(action string, detail map[string]any) bool {
 				return true
 			}
 		}
-	} else {
-		if dryRun {
-			output.Info("[dry-run] " + action)
-			return true
-		}
+	} else if dryRun {
+		output.Info("[dry-run] " + action)
+		return true
 	}
 	return false
 }
