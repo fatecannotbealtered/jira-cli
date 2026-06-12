@@ -119,13 +119,12 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Build
-        run: go build -o jira-cli ./cmd/jira-cli
-
-      - name: Smoke test (Unix)
-        if: runner.os != 'Windows'
-        run: ./jira-cli --help
-
-      - name: Smoke test (Windows)
-        if: runner.os == 'Windows'
-        run: ./jira-cli.exe --help
+      - name: Build and smoke test
+        # explicit -o never appends .exe, so name the output per-OS;
+        # bash keeps one step working across all three runners
+        shell: bash
+        run: |
+          BIN=jira-cli
+          [ "$RUNNER_OS" = "Windows" ] && BIN=jira-cli.exe
+          go build -o "$BIN" ./cmd/jira-cli
+          "./$BIN" --help
