@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- FCC enumeration guard (`TestFCC_EveryLeafCommandHasTest`): enumerates every leaf command from live `reference` output and asserts each has a command-level test; skips while `fcc_status` is honestly declared non-verified, so the claim cannot be flipped without coverage.
+- Command-level tests for `changelog` (`--json` and `--since`).
 - Added runtime `changelog [--since]` output derived from `CHANGELOG.md`, plus an embedded changelog source for built binaries.
 - Added repository standard files for the AI-native tool skeleton: `AGENTS.md`, `NOTICE.md`, `CODE_OF_CONDUCT.md`, `docs/COMPATIBILITY.md`, `docs/E2E.md`, and `docs/OPEN_SOURCE_CHECKLIST.md`.
 - Added bundled Skill version negotiation via `metadata.requires.min_version` and a `doctor` version check.
