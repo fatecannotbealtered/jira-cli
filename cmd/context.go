@@ -53,6 +53,7 @@ type contextCredentials struct {
 	Configured bool   `json:"configured"`
 	Present    bool   `json:"present"`
 	Source     string `json:"source,omitempty"`
+	Storage    string `json:"storage,omitempty"`
 	Status     string `json:"status"`
 	Error      string `json:"error,omitempty"`
 }
@@ -95,6 +96,7 @@ func runContext(_ *cobra.Command, _ []string) error {
 	doc.Credentials.Configured = doc.Config.Configured
 	doc.Credentials.Present = doc.Config.TokenPresent
 	doc.Credentials.Source = doc.Config.TokenSource
+	doc.Credentials.Storage = cfg.Storage
 	if !doc.Config.Configured {
 		printContextResult(doc)
 		return nil

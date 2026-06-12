@@ -55,8 +55,8 @@ func TestSaveAndLoad(t *testing.T) {
 	if strings.Contains(string(data), want.Token) {
 		t.Fatalf("config file contains plaintext token: %s", data)
 	}
-	if !strings.Contains(string(data), "token_enc") {
-		t.Fatalf("config file should contain encrypted token: %s", data)
+	if !strings.Contains(string(data), "token_storage") {
+		t.Fatalf("config file should declare its storage backend: %s", data)
 	}
 }
 

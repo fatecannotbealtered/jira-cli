@@ -36,6 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- API token now lives in the OS keyring (Windows Credential Manager / macOS Keychain / Linux Secret Service); `config.json` keeps zero secrets, only a `token_storage` marker. Machine-bound file encryption remains as the fallback when no keyring service exists, and `context.data.credentials.storage` reports the active backend. Logout clears the keyring entry.
+- Synced `.agent/` SEC-SPEC from the template: credential-at-rest is now the keyring three-part pattern (password discarded after login / secrets in the OS keyring / zero-secret config), file encryption demoted to a visible fallback, env vars as the recommended secret channel, and an honest note on Windows `0600` semantics.
 - Confirm tokens are now signed with a machine-local HMAC key (`confirm.secret`, created on first use with 0600 permissions) so they cannot be fabricated without running `--dry-run` on the same machine.
 - Saved config tokens are written as AES-256-GCM encrypted `token_enc` values; legacy plaintext config remains readable for migration.
 - Release checksums are signed with Sigstore/Cosign, and install/update paths report signature verification status separately from checksum verification.

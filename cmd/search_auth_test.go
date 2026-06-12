@@ -14,6 +14,8 @@ import (
 	"github.com/fatecannotbealtered/jira-cli/internal/config"
 	"github.com/fatecannotbealtered/jira-cli/internal/output"
 	"github.com/spf13/pflag"
+
+	"github.com/zalando/go-keyring"
 )
 
 func TestMain(m *testing.M) {
@@ -21,6 +23,8 @@ func TestMain(m *testing.M) {
 	http.DefaultTransport = &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // test-only
 	}
+	// Tests must never touch the real OS keyring.
+	keyring.MockInit()
 	os.Exit(m.Run())
 }
 

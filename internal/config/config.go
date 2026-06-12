@@ -24,13 +24,17 @@ var (
 type Config struct {
 	Host  string `json:"host"`
 	Token string `json:"token"`
+	// Storage reports which at-rest backend served the token:
+	// "keyring", "encrypted-file", or "" (env-only / legacy plaintext).
+	Storage string `json:"-"`
 }
 
 type diskConfig struct {
-	Version  int    `json:"version"`
-	Host     string `json:"host"`
-	Token    string `json:"token,omitempty"`
-	TokenEnc string `json:"token_enc,omitempty"`
+	Version      int    `json:"version"`
+	Host         string `json:"host"`
+	Token        string `json:"token,omitempty"`
+	TokenEnc     string `json:"token_enc,omitempty"`
+	TokenStorage string `json:"token_storage,omitempty"`
 }
 
 // Dir returns the configuration directory path ~/.jira-cli/
@@ -62,12 +66,20 @@ func Load() (*Config, error) {
 		}
 		cfg.Host = disk.Host
 		switch {
+		case disk.TokenStorage == storageKeyring:
+			token, err := keyringGet(keyringService, keyringAccount)
+			if err != nil {
+				return nil, fmt.Errorf("reading token from OS keyring (re-run 'jira-cli login'): %w", err)
+			}
+			cfg.Token = token
+			cfg.Storage = storageKeyring
 		case disk.TokenEnc != "":
 			token, err := decryptToken(disk.TokenEnc)
 			if err != nil {
 				return nil, fmt.Errorf("decrypting config token: %w", err)
 			}
 			cfg.Token = token
+			cfg.Storage = storageEncryptedFile
 		default:
 			// Legacy plaintext config; the next successful login/save rewrites it encrypted.
 			cfg.Token = disk.Token
@@ -94,11 +106,23 @@ func Save(cfg *Config) error {
 		return fmt.Errorf("creating config dir: %w", err)
 	}
 
-	tokenEnc, err := encryptToken(cfg.Token)
-	if err != nil {
-		return fmt.Errorf("encrypting config token: %w", err)
+	// Keyring three-part pattern (SEC-SPEC §4): secret to the OS keyring,
+	// zero-secret config. Machine-bound file encryption only as fallback when
+	// no keyring service is available; the chosen backend stays visible.
+	disk := diskConfig{Version: 2, Host: cfg.Host}
+	if err := keyringSet(keyringService, keyringAccount, cfg.Token); err == nil {
+		disk.TokenStorage = storageKeyring
+		cfg.Storage = storageKeyring
+	} else {
+		tokenEnc, encErr := encryptToken(cfg.Token)
+		if encErr != nil {
+			return fmt.Errorf("encrypting config token: %w", encErr)
+		}
+		disk.TokenEnc = tokenEnc
+		disk.TokenStorage = storageEncryptedFile
+		cfg.Storage = storageEncryptedFile
 	}
-	data, err := configMarshalIndent(diskConfig{Version: 2, Host: cfg.Host, TokenEnc: tokenEnc}, "", "  ")
+	data, err := configMarshalIndent(disk, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encoding config: %w", err)
 	}
@@ -185,8 +209,10 @@ func MustLoad() (*Config, error) {
 	return cfg, nil
 }
 
-// Delete removes the configuration file (used for logout).
+// Delete removes the configuration file and the keyring entry (used for logout).
 func Delete() error {
+	// Best-effort: the keyring entry may not exist (env-only or encrypted-file setups).
+	_ = keyringDelete(keyringService, keyringAccount)
 	err := configRemove(FilePath())
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("deleting config: %w", err)
