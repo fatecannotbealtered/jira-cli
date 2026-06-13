@@ -569,7 +569,7 @@ func TestDoctor_SuccessJSON(t *testing.T) {
 		check := raw.(map[string]any)
 		if check["check"] == "release_readiness" {
 			foundReleaseReadiness = true
-			if check["status"] != "warn" {
+			if check["status"] != "pass" {
 				t.Fatalf("release_readiness check=%v", check)
 			}
 		}
