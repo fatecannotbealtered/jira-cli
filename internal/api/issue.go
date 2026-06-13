@@ -116,9 +116,10 @@ func (a *IssueAPI) List(opts IssueListOptions) ([]Issue, error) {
 
 // Create creates a new issue.
 func (a *IssueAPI) Create(req CreateIssueRequest) (*IssueRef, error) {
-	if desc, ok := req.Fields.Description.(string); ok && desc != "" {
-		req.Fields.Description = TextToADF(desc)
-	}
+	// Jira Data Center / Server REST API v2 takes a plain-string description;
+	// ADF (the doc-node object) is Cloud/API-v3 only and v2 rejects it with
+	// "description: must be a string". jira-cli targets Data Center, so the
+	// string is passed through unchanged.
 	data, err := a.client.Post("/rest/api/2/issue", req)
 	if err != nil {
 		return nil, err
@@ -135,9 +136,7 @@ func (a *IssueAPI) Create(req CreateIssueRequest) (*IssueRef, error) {
 
 // Edit updates issue fields.
 func (a *IssueAPI) Edit(key string, req EditIssueRequest) error {
-	if desc, ok := req.Fields.Description.(string); ok && desc != "" {
-		req.Fields.Description = TextToADF(desc)
-	}
+	// API v2 (Data Center/Server) takes a plain-string description, not ADF.
 	path := a.client.restPath(fmt.Sprintf("/issue/%s", url.PathEscape(key)))
 	_, err := a.client.Put(path, req)
 	return err

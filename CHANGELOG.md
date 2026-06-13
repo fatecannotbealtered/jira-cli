@@ -5,10 +5,11 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.1.1] - 2026-06-14
 
 ### Added
 
+- Recorded live smoke against a real licensed Jira Data Center instance (`docs/LIVE-SMOKE-EVIDENCE.md`, 2026-06-14: auth, reads, error taxonomy, and the write confirm-chain including a real comment add/delete with cleanup); `release_readiness` is now `stable` with `live_smoke_status: verified`.
 - FCC enumeration guard (`TestFCC_EveryLeafCommandHasTest`): enumerates every leaf command from live `reference` output and asserts each has a command-level test; skips while `fcc_status` is honestly declared non-verified, so the claim cannot be flipped without coverage.
 - Command-level tests for `changelog` (`--json` and `--since`).
 - Added runtime `changelog [--since]` output derived from `CHANGELOG.md`, plus an embedded changelog source for built binaries.
@@ -29,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `issue create` / `issue edit` sent the `--description` as Cloud ADF (a `{type:"doc",…}` object), but jira-cli targets Jira Data Center / Server REST API v2, which takes a **plain string** — a real DC instance rejected it with `description: must be a string`. Now passed through as a plain string, with a regression test. Found by live smoke (mock tests had asserted the ADF shape).
 - `TestIssueCommands_NotConfigured` now isolates HOME so a developer's real `~/.jira-cli/config.json` cannot leak into the test and turn it into a network call.
 - JSON failure envelopes now include `meta.duration_ms`.
 - Agent error codes now use the CLI spec names `E_AUTH` and `E_CONFIRMATION_REQUIRED`.

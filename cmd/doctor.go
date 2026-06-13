@@ -17,7 +17,7 @@ var doctorCmd = &cobra.Command{
 	RunE:  runDoctor,
 }
 
-const skillMinVersion = "1.1.0"
+const skillMinVersion = "1.1.1"
 
 func init() {
 	rootCmd.AddCommand(doctorCmd)

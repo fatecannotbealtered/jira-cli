@@ -168,7 +168,10 @@ func TestIssueCreate_Success(t *testing.T) {
 	}
 }
 
-func TestIssueCreate_ConvertsDescriptionToADF(t *testing.T) {
+// Jira Data Center / Server REST API v2 takes a plain-string description, not
+// Cloud ADF. Live smoke against a real DC instance rejected the ADF object with
+// "description: must be a string"; this guards the v2 plain-string contract.
+func TestIssueCreate_DescriptionIsPlainString(t *testing.T) {
 	var receivedBody map[string]any
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewDecoder(r.Body).Decode(&receivedBody)
@@ -192,9 +195,8 @@ func TestIssueCreate_ConvertsDescriptionToADF(t *testing.T) {
 	}
 
 	fields, _ := receivedBody["fields"].(map[string]any)
-	desc, _ := fields["description"].(map[string]any)
-	if desc["type"] != "doc" {
-		t.Errorf("expected description to be ADF doc, got %v", desc)
+	if desc, ok := fields["description"].(string); !ok || desc != "plain text description" {
+		t.Errorf("expected description to be the plain string, got %#v", fields["description"])
 	}
 }
 
@@ -218,7 +220,7 @@ func TestIssueEdit_Success(t *testing.T) {
 	}
 }
 
-func TestIssueEdit_ConvertsDescriptionToADF(t *testing.T) {
+func TestIssueEdit_DescriptionIsPlainString(t *testing.T) {
 	var receivedBody map[string]any
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPut {
@@ -237,10 +239,10 @@ func TestIssueEdit_ConvertsDescriptionToADF(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
+	// API v2 (Data Center/Server) takes a plain-string description, not ADF.
 	fields, _ := receivedBody["fields"].(map[string]any)
-	desc, _ := fields["description"].(map[string]any)
-	if desc["type"] != "doc" {
-		t.Errorf("expected description to be ADF doc, got %v", desc)
+	if desc, ok := fields["description"].(string); !ok || desc != "plain text description" {
+		t.Errorf("expected description to be the plain string, got %#v", fields["description"])
 	}
 }
 

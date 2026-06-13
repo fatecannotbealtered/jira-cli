@@ -14,14 +14,14 @@ type releaseReadiness struct {
 
 func buildReleaseReadiness() releaseReadiness {
 	return releaseReadiness{
-		Level:                      "beta",
+		Level:                      "stable",
 		FCCRequired:                true,
 		FCCStatus:                  "verified",
 		MockUpstreamRequired:       true,
 		MockUpstreamStatus:         "verified",
 		LiveSmokeRequiredForStable: true,
-		LiveSmokeStatus:            "missing",
-		Reason:                     "FCC and mock upstream/contract tests are required; recorded live smoke/E2E evidence is missing, so this release is beta.",
+		LiveSmokeStatus:            "verified",
+		Reason:                     "FCC and mock upstream/contract tests are verified; recorded live smoke against a real licensed Jira Data Center instance (docs/LIVE-SMOKE-EVIDENCE.md, 2026-06-14: auth, reads, error taxonomy, and the write confirm-chain incl. a real comment add/delete with cleanup) supports stable.",
 		RequiredEvidence: []string{
 			"functional_contract_coverage_100",
 			"mock_upstream_contract_tests",
