@@ -410,11 +410,21 @@ func dryRunOutput(action string, detail map[string]any) bool {
 				setExitCode(ExitConfirmRequired)
 				return true
 			}
-			if err := validateConfirmToken(action, detail, confirmToken, time.Now().UTC()); err != nil {
+			now := time.Now().UTC()
+			if err := validateConfirmToken(action, detail, confirmToken, now); err != nil {
 				output.PrintErrorJSONWithCode(err.Error(), 0, output.ErrConflict)
 				setExitCode(ExitConflict)
 				return true
 			}
+			// Single-use: a confirm token may drive exactly one write. A replay
+			// (e.g. an agent retrying a confirmed write that timed out) is rejected
+			// so it cannot duplicate the operation; the agent must re-run --dry-run.
+			if isConfirmTokenConsumed(confirmToken, now) {
+				output.PrintErrorJSONWithCode("confirm token already used; the operation may have completed — re-run --dry-run to see current state", 0, output.ErrConflict)
+				setExitCode(ExitConflict)
+				return true
+			}
+			markConfirmTokenConsumed(confirmToken, confirmTokenExpiryUnix(confirmToken), now)
 		}
 	} else if dryRun {
 		output.Info("[dry-run] " + action)
@@ -498,6 +508,21 @@ func validateConfirmToken(action string, detail map[string]any, token string, no
 		return fmt.Errorf("confirm token does not match this operation")
 	}
 	return nil
+}
+
+// confirmTokenExpiryUnix extracts the expiry unix seconds from a ct_<unix>_<digest>
+// token, or 0 if it cannot be parsed (the consumed-token entry then prunes on the
+// next access).
+func confirmTokenExpiryUnix(token string) int64 {
+	parts := strings.Split(token, "_")
+	if len(parts) != 3 {
+		return 0
+	}
+	n, err := parseConfirmTokenExpiry(parts[1])
+	if err != nil {
+		return 0
+	}
+	return n
 }
 
 func parseConfirmTokenExpiry(s string) (int64, error) {
