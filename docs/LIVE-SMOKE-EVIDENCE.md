@@ -25,6 +25,37 @@ Verified against the same production Jira Data Center (aggregate counts only):
 
 All v1.1.3 new read commands are live-verified.
 
+## 2026-06-15 — batch commands (live + dry-run)
+
+Run against the same production Jira Data Center. All mutations used
+self-created throwaway issues in a test project, self-reported and
+self-assigned to `tester`; aggregate pass/fail and method only — no
+hosts, keys, tokens, or returned content recorded. Issues were neutralised
+(transitioned to Done, unassigned) afterward; hard-delete is denied by the
+project ACL (E_FORBIDDEN), a project-config artifact, not a CLI defect.
+
+| Command / behavior | Result | Method |
+|---|---|---|
+| `issue bulk-create --file` | PASS (live) | native `/issue/bulk`; created issues map positionally to `items[]` by 0-based file index, with real key+URL |
+| `issue bulk-create` partial failure | PASS (live) | one valid + one bad issue-type spec → upstream `errors[].failedElementNumber` mapped to that item's `ok:false` (E_VALIDATION); the other item created; top-level `ok:true`, summary `succeeded:1 failed:1` |
+| `issue backlog-move` | PASS (live) | `POST /rest/agile/1.0/backlog/issue` 204; aggregated `items[]`/summary |
+| `issue rank --after` | PASS (live) | `PUT /rest/agile/1.0/issue/rank` `rankAfterIssue` 204 |
+| `issue rank --before` | PASS (live) | same endpoint, `rankBeforeIssue` 204 |
+| `issue bulk-assign` partial failure | PASS (live) | valid key + nonexistent key → per-item `E_NOT_FOUND` (real 404) aggregated; top-level `ok:true` |
+| `issue bulk-edit` partial failure | PASS (live) | valid key + nonexistent key → per-item `E_NOT_FOUND` (real 404) aggregated |
+| `issue bulk-transition` | PASS (live) | `--dangerous` gate enforced in both dry-run and confirm; closed 4 self-owned issues 4/4 |
+| single-use confirm on a batch | PASS (live) | first `--confirm` succeeded; replay of the same token → `E_CONFLICT` |
+| `--dangerous` gate (bulk-transition) | PASS (live) | command blocked with `E_CONFIRMATION_REQUIRED` until `--dangerous` supplied |
+| dry-run envelope + validation guards | PASS (dry-run) | every new batch command emits a well-formed `confirm_token`/`preview`; empty file, both-anchor rank, no-field edit each rejected with `E_VALIDATION` |
+| `sprint move` >50 keys (chunking) | dry-run + contract-test only, **not real-sprint executed** | dry-run accepts a 51-key set; the 50+1 → two-POST split is the shared `api.ChunkKeys(_, AgileMoveCap=50)` path, asserted live-equivalent by `TestBatch_BacklogMove_ChunkBoundary` and `TestBatch_Rank_ChunkBoundary` (51 keys → exactly 2 upstream calls). A real 51-issue move was **not** executed to avoid polluting a shared team board. |
+
+Honest scope note: bulk-create's partial-failure path was exercised against
+the real native endpoint; the class-B loop commands (bulk-assign/bulk-edit)
+had their partial-failure aggregation exercised with a real per-issue 404. The
+sprint-move >50 chunking is verified by contract test + live dry-run, not by a
+real >50 production move. No dangerous/irreversible mass operation (mass
+delete, etc.) was executed.
+
 ## Result by class
 
 ### Auth + reads — PASS
