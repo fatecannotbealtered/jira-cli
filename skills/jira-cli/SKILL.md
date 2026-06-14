@@ -29,6 +29,7 @@ jira-cli doctor
 Use this Skill for:
 
 - Jira Data Center issue search, read, create, edit, transition, comments, worklogs, links, attachments, assignees, watchers, and votes.
+- Batch issue operations over a set selected by explicit keys or JQL: bulk-create, backlog-move, bulk-assign, bulk-edit, and rank.
 - Jira Data Center sprint, board, backlog, epic, project, user, and saved filter operations.
 - JQL search or any workflow that needs Jira DC data from the terminal.
 - Checking Jira CLI authentication, context, doctor diagnostics, audit behavior, self-update, or changelog.
@@ -191,6 +192,26 @@ jira-cli sprint move --sprint 10 --issues PROJ-123,PROJ-124 --confirm "$TOKEN" -
 jira-cli filter list --compact
 jira-cli filter run <filterId> --fields key,summary,status,updated --compact
 ```
+
+### Batch writes (one command, one confirm, aggregated result)
+
+Each batch command is a single agent-facing command: plural `--issues` (comma-separated or repeatable) and/or `--jql` to select targets, one `--dry-run` → `--confirm <token>` covering the whole resolved set, and one aggregated result with per-item `items[]` (`target`, `ok`, `error{code,retryable}`) plus a `summary{total,succeeded,failed,skipped}`. A partial failure does NOT roll back succeeded items; top-level `.ok` stays `true` when the batch ran. `--continue-on-error` defaults to `true` (best-effort); set `--continue-on-error=false` to stop at the first failure (the unattempted remainder is reported as `skipped` so you can resume). Large batches auto-chunk to the Jira ≤50 cap invisibly.
+
+```bash
+# Bulk edit / assign by JQL selection.
+TOKEN=$(jira-cli issue bulk-edit --jql "project = PROJ AND fixVersion = EMPTY" --priority High --dry-run --compact | jq -r '.data.confirm_token')
+jira-cli issue bulk-edit --jql "project = PROJ AND fixVersion = EMPTY" --priority High --confirm "$TOKEN" --compact
+
+# Move issues out of a sprint back to the backlog (inverse of sprint move).
+TOKEN=$(jira-cli issue backlog-move --issues PROJ-1,PROJ-2 --dry-run --compact | jq -r '.data.confirm_token')
+jira-cli issue backlog-move --issues PROJ-1,PROJ-2 --confirm "$TOKEN" --compact
+
+# Create many issues from a JSON array file ([{ "project": "...", "summary": "...", "type": "Task" }, ...]).
+TOKEN=$(jira-cli issue bulk-create --file issues.json --dry-run --compact | jq -r '.data.confirm_token')
+jira-cli issue bulk-create --file issues.json --confirm "$TOKEN" --compact   # items[].target = file index, items[].key = created key
+```
+
+After confirming, read `.data.summary` and any `items[].ok == false` entries; re-run `--dry-run` (which resolves to the still-pending targets) rather than replaying the consumed token.
 
 ## Eval scenarios for Skill changes
 
