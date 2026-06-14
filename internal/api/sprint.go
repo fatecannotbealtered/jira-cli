@@ -154,10 +154,22 @@ func (a *SprintAPI) Close(sprintID int) error {
 	return err
 }
 
-// MoveIssues moves the specified issues into the given sprint.
+// MoveIssues moves one chunk of issues into the given sprint. The agile
+// /sprint/{id}/issue endpoint caps each request at AgileMoveCap (50); callers
+// that may exceed the cap must split with ChunkKeys and call this per chunk so
+// the upstream never sees an over-cap batch and 400s.
 func (a *SprintAPI) MoveIssues(sprintID int, issueKeys []string) error {
 	path := fmt.Sprintf("/rest/agile/1.0/sprint/%d/issue", sprintID)
 	req := MoveIssuesToSprintRequest{Issues: issueKeys}
 	_, err := a.client.Post(path, req)
+	return err
+}
+
+// MoveToBacklog moves one chunk of issues out of any sprint and back to the
+// backlog. Same AgileMoveCap (50) per-request limit as MoveIssues; chunk before
+// calling. This is the symmetric inverse of MoveIssues.
+func (a *SprintAPI) MoveToBacklog(issueKeys []string) error {
+	req := MoveIssuesToSprintRequest{Issues: issueKeys}
+	_, err := a.client.Post("/rest/agile/1.0/backlog/issue", req)
 	return err
 }

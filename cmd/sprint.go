@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 	"strconv"
-	"strings"
 
 	"github.com/fatecannotbealtered/jira-cli/internal/api"
 	"github.com/fatecannotbealtered/jira-cli/internal/output"
@@ -343,15 +342,16 @@ var sprintMoveCmd = &cobra.Command{
 			output.Error("--sprint and --issues are required")
 			return SilentErr(ExitBadArgs)
 		}
-		issueKeys := strings.Split(issuesStr, ",")
-		for i, k := range issueKeys {
-			issueKeys[i] = strings.TrimSpace(k)
-		}
+		issueKeys := parsePluralKeys([]string{issuesStr}, nil)
 		if dryRunOutput("move issues to sprint", map[string]any{"sprintId": fmt.Sprintf("%d", sprintID), "issues": issueKeys}) {
 			return nil
 		}
-		if err := client.Sprints.MoveIssues(sprintID, issueKeys); err != nil {
-			return handleAPIError(err, jsonMode)
+		// Chunk at the agile cap: the /sprint/{id}/issue endpoint rejects >50 keys
+		// per request, so a large move would otherwise 400 silently upstream.
+		for _, chunk := range api.ChunkKeys(issueKeys, api.AgileMoveCap) {
+			if err := client.Sprints.MoveIssues(sprintID, chunk); err != nil {
+				return handleAPIError(err, jsonMode)
+			}
 		}
 		if jsonMode {
 			output.PrintJSON(map[string]any{"sprintId": fmt.Sprintf("%d", sprintID), "issues": issueKeys})
