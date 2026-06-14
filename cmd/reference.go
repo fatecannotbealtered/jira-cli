@@ -181,12 +181,12 @@ func permissionTier(cmd *cobra.Command) string {
 	if !isWriteCommand(cmd) {
 		return "read"
 	}
-	switch cmd.CommandPath() {
-	case "jira-cli issue delete", "jira-cli issue bulk-transition", "jira-cli sprint close", "jira-cli filter delete", "jira-cli update":
+	// Read from the same set the runtime gate enforces, so the advertised tier
+	// can never drift from what --dangerous actually guards.
+	if isDangerousCommand(cmd) {
 		return "write-dangerous"
-	default:
-		return "write"
 	}
+	return "write"
 }
 
 func blastRadius(cmd *cobra.Command) string {

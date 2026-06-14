@@ -451,10 +451,18 @@ func (a *IssueAPI) Search(jql string, opts SearchOptions) (*SearchResult, error)
 
 // SearchAll executes a JQL search with automatic pagination.
 // It caps at 10,000 issues to prevent unbounded memory usage.
-func (a *IssueAPI) SearchAll(jql string, fields []string) ([]Issue, error) {
+// SearchAllCap is the maximum number of issues SearchAll will accumulate before
+// stopping. When the cap is hit with more results available, SearchAll reports
+// truncated=true so callers can surface it instead of silently dropping rows.
+const SearchAllCap = 10000
+
+// SearchAll pages through all results for jql, up to SearchAllCap. The returned
+// bool reports whether the result was truncated at the cap (more matched than
+// were returned).
+func (a *IssueAPI) SearchAll(jql string, fields []string) ([]Issue, bool, error) {
 	const pageSize = 100
-	const maxTotal = 10000
 	var allIssues []Issue
+	truncated := false
 	startAt := 0
 	for {
 		result, err := a.Search(jql, SearchOptions{
@@ -463,16 +471,17 @@ func (a *IssueAPI) SearchAll(jql string, fields []string) ([]Issue, error) {
 			Fields:     fields,
 		})
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		allIssues = append(allIssues, result.Issues...)
 		if len(result.Issues) == 0 || startAt+len(result.Issues) >= result.Total {
 			break
 		}
-		if len(allIssues) >= maxTotal {
+		if len(allIssues) >= SearchAllCap {
+			truncated = true
 			break
 		}
 		startAt += len(result.Issues)
 	}
-	return allIssues, nil
+	return allIssues, truncated, nil
 }
