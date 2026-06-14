@@ -5,6 +5,16 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Batch issue commands, each one agent-facing command with one confirm token and one aggregated `items[]`/`summary` result (per-item `{target, ok, error{code,retryable}}`, no whole-batch rollback): `issue bulk-create --file` (native `/issue/bulk`), `issue backlog-move` (native `/backlog/issue`, symmetric inverse of `sprint move`), `issue bulk-assign`, `issue bulk-edit` (client-side loop over per-issue field writes), and `issue rank` (native `/issue/rank`). All accept plural `--issues` (comma-separated or repeatable) and/or `--jql` selection, support `--continue-on-error` (default `true`), and auto-chunk to the Jira ≤50 cap so a large batch never 400s upstream. New `batch_result` / `batch_create_result` output schemas and runnable dry-run→confirm examples in `reference`.
+
+### Fixed
+
+- `sprint move` now auto-chunks issue keys at the agile ≤50 per-request cap instead of POSTing the whole list in one call (a >50 move previously 400'd silently upstream). The chunk size lives in one shared helper (`api.ChunkKeys` + `api.AgileMoveCap`) reused by `sprint move`, `issue backlog-move`, `issue bulk-create`, and `issue rank` so the cap cannot drift between commands sharing an endpoint.
+
 ## [1.1.3] - 2026-06-14
 
 ### Added

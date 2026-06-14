@@ -285,7 +285,8 @@ func tokensAreWriteCommand(tokens []string) bool {
 	case "issue":
 		switch tokens[1] {
 		case "create", "edit", "delete", "assign", "unassign", "watch", "unwatch", "vote", "unvote",
-			"transition", "bulk-transition", "unlink", "remote-link", "clone", "attach":
+			"transition", "bulk-transition", "unlink", "remote-link", "clone", "attach",
+			"bulk-create", "backlog-move", "bulk-assign", "bulk-edit", "rank":
 			return true
 		case "link":
 			// `issue link <KEY>` is a write, but `issue link list <KEY>` is a
