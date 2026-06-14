@@ -13,6 +13,18 @@ Center** instance.
   asserted. All mutations were self-contained and cleaned up; no other users
   were assigned or notified.
 
+## 2026-06-14 — v1.1.3 new reads + single-use (live)
+
+Verified against the same production Jira Data Center (aggregate counts only):
+
+| Command / behavior | Result | Notes |
+|---|---|---|
+| `issue link list <KEY>` | PASS | returns the issue's links (id/direction/type/linked key+summary+status), `_untrusted` on summary; empty array for an unlinked issue |
+| `sprint report <sprintId> --board <id>` | PASS | live closed sprint: committed 72 issues / 91 pts, completed 67 / 84.5 pts, not-completed 5 / 6.5 pts; `source: greenhopper` |
+| confirm token **single-use** | PASS (unit+live) | replaying a confirmed write's token → `E_CONFLICT` (verified live on gitlab; same code path) |
+
+All v1.1.3 new read commands are live-verified.
+
 ## Result by class
 
 ### Auth + reads — PASS
