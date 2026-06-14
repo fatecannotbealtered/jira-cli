@@ -413,6 +413,15 @@ type MoveIssuesToSprintRequest struct {
 	Issues []string `json:"issues"`
 }
 
+// RankRequest reorders issues relative to an anchor via the agile /issue/rank
+// endpoint. Exactly one of RankAfterIssue / RankBeforeIssue is set.
+type RankRequest struct {
+	Issues            []string `json:"issues"`
+	RankAfterIssue    string   `json:"rankAfterIssue,omitempty"`
+	RankBeforeIssue   string   `json:"rankBeforeIssue,omitempty"`
+	RankCustomFieldID int      `json:"rankCustomFieldId,omitempty"`
+}
+
 type CreateFilterRequest struct {
 	Name        string `json:"name"`
 	JQL         string `json:"jql"`
