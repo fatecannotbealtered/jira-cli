@@ -329,6 +329,22 @@ func (a *IssueAPI) ListWorklogs(key string) ([]Worklog, error) {
 	return allWorklogs, nil
 }
 
+// GetLinks retrieves only the issuelinks field of an issue. Used by the
+// first-class `issue link list` command so callers don't have to parse the full
+// `issue get` payload just to inspect links.
+func (a *IssueAPI) GetLinks(key string) ([]IssueLink, error) {
+	path := a.client.restPath(fmt.Sprintf("/issue/%s?fields=issuelinks", url.PathEscape(key)))
+	data, err := a.client.Get(path)
+	if err != nil {
+		return nil, err
+	}
+	var issue Issue
+	if err := json.Unmarshal(data, &issue); err != nil {
+		return nil, fmt.Errorf("parsing issue links: %w", err)
+	}
+	return issue.Fields.IssueLinks, nil
+}
+
 // CreateLink creates an issue link.
 func (a *IssueAPI) CreateLink(req IssueLinkRequest) error {
 	_, err := a.client.Post(a.client.restPath("/issueLink"), req)

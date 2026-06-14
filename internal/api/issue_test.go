@@ -1634,3 +1634,62 @@ func TestIssueSearchAll_MaxTotalCap(t *testing.T) {
 		t.Errorf("expected 1 API call before cap, got %d", callCount)
 	}
 }
+
+// ─── Issue.GetLinks ────────────────────────────────────────────────────────────
+
+func TestIssueGetLinks_Success(t *testing.T) {
+	var receivedPath string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedPath = r.URL.String()
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{"id":"1","key":"PROJ-1","fields":{"issuelinks":[
+			{"id":"link1","type":{"name":"Blocks","inward":"is blocked by","outward":"blocks"},"outwardIssue":{"key":"PROJ-99","fields":{"summary":"Downstream","status":{"name":"To Do"}}}},
+			{"id":"link2","type":{"name":"Relates","inward":"relates to","outward":"relates to"},"inwardIssue":{"key":"PROJ-88","fields":{"summary":"Upstream","status":{"name":"Done"}}}}
+		]}}`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	links, err := c.Issues.GetLinks("PROJ-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(receivedPath, "fields=issuelinks") {
+		t.Errorf("expected fields=issuelinks in path, got %q", receivedPath)
+	}
+	if len(links) != 2 {
+		t.Fatalf("expected 2 links, got %d", len(links))
+	}
+	if links[0].OutwardIssue == nil || links[0].OutwardIssue.Fields == nil ||
+		links[0].OutwardIssue.Fields.Summary != "Downstream" {
+		t.Errorf("link0 outward summary not parsed: %+v", links[0])
+	}
+	if links[1].InwardIssue == nil || links[1].InwardIssue.Fields.Status.Name != "Done" {
+		t.Errorf("link1 inward status not parsed: %+v", links[1])
+	}
+}
+
+func TestIssueGetLinks_Error(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	if _, err := c.Issues.GetLinks("PROJ-1"); err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestIssueGetLinks_InvalidJSON(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{invalid`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	if _, err := c.Issues.GetLinks("PROJ-1"); err == nil || !strings.Contains(err.Error(), "parsing issue links") {
+		t.Fatalf("error = %v", err)
+	}
+}

@@ -391,3 +391,112 @@ func TestSprintMoveIssues_Error(t *testing.T) {
 		t.Fatal("expected error")
 	}
 }
+
+// ─── Sprint.GetReport ──────────────────────────────────────────────────────────
+
+func TestSprintGetReport_Greenhopper(t *testing.T) {
+	var receivedPath string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedPath = r.URL.String()
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{"contents":{
+			"completedIssues":[{"key":"P-1"},{"key":"P-2"}],
+			"issuesNotCompletedInCurrentSprint":[{"key":"P-3"}],
+			"puntedIssues":[{"key":"P-4"}],
+			"completedIssuesEstimateSum":{"value":8,"text":"8.0"},
+			"issuesNotCompletedEstimateSum":{"value":3,"text":"3.0"}
+		},"sprint":{"id":10,"name":"Sprint 10","state":"closed"}}`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	report, err := c.Sprints.GetReport(10, 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !contains(receivedPath, "sprintreport") || !contains(receivedPath, "rapidViewId=1") || !contains(receivedPath, "sprintId=10") {
+		t.Errorf("unexpected chart path %q", receivedPath)
+	}
+	if report.Source != "greenhopper" {
+		t.Errorf("source = %q, want greenhopper", report.Source)
+	}
+	if report.CompletedIssues != 2 || report.CommittedIssues != 3 || report.PunctedIssues != 1 {
+		t.Errorf("counts = %+v", report)
+	}
+	if report.CompletedPoints != 8 || report.CommittedPoints != 11 {
+		t.Errorf("points = %+v", report)
+	}
+}
+
+func TestSprintGetReport_FallbackWhenChartMissing(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case contains(r.URL.Path, "sprintreport"):
+			w.WriteHeader(http.StatusNotFound)
+		case contains(r.URL.Path, "/sprint/10/issue"):
+			w.WriteHeader(http.StatusOK)
+			_, _ = fmt.Fprint(w, `{"issues":[
+				{"id":"1","key":"P-1","fields":{"summary":"a","status":{"name":"Done","statusCategory":{"key":"done"}},"issuetype":{"name":"Task"}}},
+				{"id":"2","key":"P-2","fields":{"summary":"b","status":{"name":"Open","statusCategory":{"key":"new"}},"issuetype":{"name":"Task"}}}
+			]}`)
+		case contains(r.URL.Path, "/sprint/10"):
+			w.WriteHeader(http.StatusOK)
+			_, _ = fmt.Fprint(w, `{"id":10,"name":"Sprint 10","state":"active"}`)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	report, err := c.Sprints.GetReport(10, 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if report.Source != "computed" {
+		t.Errorf("source = %q, want computed", report.Source)
+	}
+	if report.CommittedIssues != 2 || report.CompletedIssues != 1 || report.NotCompletedIssues != 1 {
+		t.Errorf("counts = %+v", report)
+	}
+}
+
+func TestSprintGetReport_ComputedWhenNoBoard(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if contains(r.URL.Path, "sprintreport") {
+			t.Errorf("chart endpoint should not be called without board id")
+		}
+		switch {
+		case contains(r.URL.Path, "/sprint/10/issue"):
+			w.WriteHeader(http.StatusOK)
+			_, _ = fmt.Fprint(w, `{"issues":[{"id":"1","key":"P-1","fields":{"status":{"statusCategory":{"key":"done"}},"issuetype":{"name":"Task"}}}]}`)
+		case contains(r.URL.Path, "/sprint/10"):
+			w.WriteHeader(http.StatusOK)
+			_, _ = fmt.Fprint(w, `{"id":10,"name":"Sprint 10","state":"closed"}`)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	report, err := c.Sprints.GetReport(10, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if report.Source != "computed" || report.CompletedIssues != 1 {
+		t.Errorf("report = %+v", report)
+	}
+}
+
+func TestSprintGetReport_FallbackError(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	if _, err := c.Sprints.GetReport(10, 0); err == nil {
+		t.Fatal("expected error from fallback")
+	}
+}

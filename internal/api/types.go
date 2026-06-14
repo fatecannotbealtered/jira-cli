@@ -85,8 +85,17 @@ type Version struct {
 }
 
 type IssueRef struct {
-	ID  string `json:"id"`
-	Key string `json:"key"`
+	ID     string          `json:"id"`
+	Key    string          `json:"key"`
+	Fields *IssueRefFields `json:"fields,omitempty"`
+}
+
+// IssueRefFields carries the lightweight fields Jira embeds on a referenced
+// issue inside issuelinks (summary + status). Present only when the parent
+// payload expands them; nil otherwise.
+type IssueRefFields struct {
+	Summary string `json:"summary"`
+	Status  Status `json:"status"`
 }
 
 type IssueLink struct {
@@ -191,6 +200,59 @@ type Sprint struct {
 type SprintPage struct {
 	PagedResponse
 	Values []Sprint `json:"values"`
+}
+
+// SprintReport is the flattened velocity/completion summary for one sprint,
+// derived either from the Greenhopper sprintreport chart or computed from the
+// sprint's issues when that endpoint is unavailable.
+type SprintReport struct {
+	SprintID           int     `json:"sprintId"`
+	SprintName         string  `json:"sprintName"`
+	State              string  `json:"state"`
+	CommittedIssues    int     `json:"committedIssues"`
+	CompletedIssues    int     `json:"completedIssues"`
+	NotCompletedIssues int     `json:"notCompletedIssues"`
+	PunctedIssues      int     `json:"removedIssues"`
+	CommittedPoints    float64 `json:"committedPoints"`
+	CompletedPoints    float64 `json:"completedPoints"`
+	NotCompletedPoints float64 `json:"notCompletedPoints"`
+	// Source reports how the figures were obtained: "greenhopper" (chart
+	// endpoint) or "computed" (derived from sprint issues). Lets callers judge
+	// confidence, since DC versions vary.
+	Source string `json:"source"`
+}
+
+// greenhopperSprintReport mirrors the subset of the Greenhopper sprintreport
+// chart payload jira-cli consumes. Field availability varies by DC version, so
+// every nested value is optional and parsed defensively.
+type greenhopperSprintReport struct {
+	Contents struct {
+		CompletedIssues                   []greenhopperReportIssue `json:"completedIssues"`
+		IssuesNotCompletedInCurrentSprint []greenhopperReportIssue `json:"issuesNotCompletedInCurrentSprint"`
+		PuntedIssues                      []greenhopperReportIssue `json:"puntedIssues"`
+		CompletedIssuesEstimateSum        greenhopperEstimate      `json:"completedIssuesEstimateSum"`
+		IssuesNotCompletedEstimateSum     greenhopperEstimate      `json:"issuesNotCompletedEstimateSum"`
+		AllIssuesEstimateSum              greenhopperEstimate      `json:"allIssuesEstimateSum"`
+	} `json:"contents"`
+	Sprint struct {
+		ID    int    `json:"id"`
+		Name  string `json:"name"`
+		State string `json:"state"`
+	} `json:"sprint"`
+}
+
+type greenhopperReportIssue struct {
+	Key               string `json:"key"`
+	EstimateStatistic struct {
+		StatFieldValue struct {
+			Value float64 `json:"value"`
+		} `json:"statFieldValue"`
+	} `json:"estimateStatistic"`
+}
+
+type greenhopperEstimate struct {
+	Value float64 `json:"value"`
+	Text  string  `json:"text"`
 }
 
 // ===== Board =====

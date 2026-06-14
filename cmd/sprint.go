@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/fatecannotbealtered/jira-cli/internal/api"
@@ -55,6 +56,9 @@ func init() {
 	sprintMoveCmd.Flags().Int("sprint", 0, "Sprint ID (required)")
 	sprintMoveCmd.Flags().String("issues", "", "Issue keys (comma-separated, required)")
 	sprintCmd.AddCommand(sprintMoveCmd)
+
+	sprintReportCmd.Flags().Int("board", 0, "Board (rapid view) ID for the Greenhopper chart; without it figures are computed from sprint issues")
+	sprintCmd.AddCommand(sprintReportCmd)
 
 	markWrite(sprintCreateCmd)
 	markWrite(sprintUpdateCmd)
@@ -356,6 +360,57 @@ var sprintMoveCmd = &cobra.Command{
 		output.Success(fmt.Sprintf("Moved %d issue(s) to sprint %d", len(issueKeys), sprintID))
 		return nil
 	},
+}
+
+var sprintReportCmd = &cobra.Command{
+	Use:   "report <SPRINT_ID>",
+	Short: "Show a sprint's velocity / completion report",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		client, _, err := newClient()
+		if err != nil {
+			return err
+		}
+		sprintID, err := strconv.Atoi(args[0])
+		if err != nil {
+			output.Error("sprint ID must be a number")
+			return SilentErr(ExitBadArgs)
+		}
+		boardID, _ := cmd.Flags().GetInt("board")
+		report, err := client.Sprints.GetReport(sprintID, boardID)
+		if err != nil {
+			return handleAPIError(err, jsonMode)
+		}
+		if jsonMode {
+			output.PrintJSON(report)
+			return nil
+		}
+		fmt.Println()
+		output.Bold(fmt.Sprintf("  Sprint Report: %s (ID: %d)", report.SprintName, report.SprintID))
+		output.Gray(fmt.Sprintf("  State: %s  |  Source: %s", report.State, report.Source))
+		fmt.Println()
+		headers := []string{"METRIC", "COMMITTED", "COMPLETED", "NOT COMPLETED", "REMOVED"}
+		rows := [][]string{
+			{"Issues",
+				strconv.Itoa(report.CommittedIssues),
+				strconv.Itoa(report.CompletedIssues),
+				strconv.Itoa(report.NotCompletedIssues),
+				strconv.Itoa(report.PunctedIssues)},
+			{"Story Points",
+				formatPoints(report.CommittedPoints),
+				formatPoints(report.CompletedPoints),
+				formatPoints(report.NotCompletedPoints),
+				"-"},
+		}
+		output.Table(headers, rows)
+		return nil
+	},
+}
+
+// formatPoints renders a story-point sum, trimming the trailing ".0" so whole
+// numbers read cleanly.
+func formatPoints(v float64) string {
+	return strconv.FormatFloat(v, 'f', -1, 64)
 }
 
 func safeDate(s string) string {

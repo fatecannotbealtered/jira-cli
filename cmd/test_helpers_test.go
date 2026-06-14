@@ -285,8 +285,13 @@ func tokensAreWriteCommand(tokens []string) bool {
 	case "issue":
 		switch tokens[1] {
 		case "create", "edit", "delete", "assign", "unassign", "watch", "unwatch", "vote", "unvote",
-			"transition", "bulk-transition", "link", "unlink", "remote-link", "clone", "attach":
+			"transition", "bulk-transition", "unlink", "remote-link", "clone", "attach":
 			return true
+		case "link":
+			// `issue link <KEY>` is a write, but `issue link list <KEY>` is a
+			// read. Defer the decision until the 3rd token is seen so
+			// commandTokens doesn't return early on the 2-token prefix.
+			return len(tokens) >= 3 && tokens[2] != "list"
 		case "comment":
 			return len(tokens) >= 3 && (tokens[2] == "add" || tokens[2] == "delete")
 		case "worklog":
