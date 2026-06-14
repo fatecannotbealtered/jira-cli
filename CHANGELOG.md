@@ -5,6 +5,20 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `search` now exposes pagination honestly: single-page output includes `isLast` and (when not last) `nextStartAt`, a new `--start-at` flag pages forward, and `--all` output sets `truncated: true` (with `cap`) when the 10k ceiling is hit. `issue bulk-transition --jql` now refuses to run when the JQL matches more than the cap, instead of silently skipping issues.
+
+### Changed
+
+- **Behavior change (agents must adopt):** the `write-dangerous` tier is now actually enforced. `issue delete`, `issue bulk-transition`, `sprint close`, and `filter delete` require `--dangerous` in BOTH the `--dry-run` and `--confirm` steps; without it they return exit `5` / `E_CONFIRMATION_REQUIRED`. Previously the tier was advertised in `reference`/SKILL but not enforced in code (the self-description over-promised). The dangerous set is now the single source of truth shared by the runtime gate and `permission_tier`. Self-update is reclassified from `write-dangerous` to `write` (it is confirm-token gated and does not mutate Jira data).
+
+### Fixed
+
+- HTTP `409` now maps to `E_CONFLICT` (exit `6`) instead of collapsing into `E_VALIDATION`, so genuine Jira edit/transition conflicts are distinguishable.
+
 ## [1.1.1] - 2026-06-14
 
 ### Added

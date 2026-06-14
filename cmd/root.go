@@ -69,6 +69,25 @@ var quietMode bool
 // dryRun is the global --dry-run flag.
 var dryRun bool
 
+// dangerousMode is the global --dangerous flag. Write-dangerous commands
+// (irreversible/bulk operations) require it in BOTH the dry-run and confirm
+// steps, on top of the ordinary --confirm token (SEC-SPEC §3 T2 second gate).
+var dangerousMode bool
+
+// dangerousCommandPaths is the single source of truth for which command paths
+// are write-dangerous. Both permissionTier (self-description) and the runtime
+// gate read it, so the advertised tier can never drift from what is enforced.
+// Self-update is intentionally NOT here: it is a confirm-token-gated write that
+// does not mutate Jira data, so it is tier "write", not "write-dangerous". This
+// set is exactly the irreversible/bulk Jira-data operations that route through
+// dryRunOutput, so the runtime gate and the advertised tier stay in lockstep.
+var dangerousCommandPaths = map[string]bool{
+	"jira-cli issue delete":          true,
+	"jira-cli issue bulk-transition": true,
+	"jira-cli sprint close":          true,
+	"jira-cli filter delete":         true,
+}
+
 // confirmToken is the global --confirm token for executing write commands.
 var confirmToken string
 
@@ -117,6 +136,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&forceMode, "force", false, "Skip confirmation prompts")
 	rootCmd.PersistentFlags().BoolVar(&quietMode, "quiet", false, "Suppress auxiliary text output (does not suppress json/raw results)")
 	rootCmd.PersistentFlags().BoolVar(&dryRun, "dry-run", false, "Show what would be done without executing")
+	rootCmd.PersistentFlags().BoolVar(&dangerousMode, "dangerous", false, "Required for write-dangerous commands (delete/bulk/close) in both the dry-run and confirm steps")
 	rootCmd.PersistentFlags().StringVar(&confirmToken, "confirm", "", "Confirmation token returned by --dry-run for write commands")
 	installUpdateNoticeHelp(rootCmd)
 
@@ -316,6 +336,8 @@ func exitCodeForStatus(status int) int {
 		return ExitForbidden
 	case status == 404:
 		return ExitNotFound
+	case status == 409:
+		return ExitConflict
 	case status == 429:
 		return ExitRateLimit
 	case status >= 500:
@@ -354,6 +376,20 @@ func confirmAction(prompt, expected string) bool {
 func dryRunOutput(action string, detail map[string]any) bool {
 	if detail == nil {
 		detail = map[string]any{}
+	}
+	// T2 second gate: write-dangerous commands require --dangerous in BOTH the
+	// dry-run and confirm steps, on top of the --confirm token. This chokepoint
+	// runs for both steps, so a single check here enforces the contract that
+	// reference advertises as permission_tier=write-dangerous.
+	if isDangerousCommand(execCmd) && !dangerousMode {
+		msg := currentCommandPath() + " is write-dangerous and requires --dangerous in both the --dry-run and --confirm steps"
+		if jsonMode {
+			output.PrintErrorJSONWithCode(msg, 0, output.ErrConfirmRequired)
+		} else {
+			output.Error(msg)
+		}
+		setExitCode(ExitConfirmRequired)
+		return true
 	}
 	if jsonMode {
 		if dryRun {
@@ -481,6 +517,12 @@ func parseConfirmTokenExpiry(s string) (int64, error) {
 // isWriteCommand returns true if the command has the "write" annotation.
 func isWriteCommand(cmd *cobra.Command) bool {
 	return cmd.Annotations["write"] == "true"
+}
+
+// isDangerousCommand reports whether the command is in the write-dangerous set
+// that requires the --dangerous second gate.
+func isDangerousCommand(cmd *cobra.Command) bool {
+	return cmd != nil && dangerousCommandPaths[cmd.CommandPath()]
 }
 
 // markWrite sets the "write" annotation on a command for audit logging.

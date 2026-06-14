@@ -511,14 +511,23 @@ func TestIssueDelete(t *testing.T) {
 	mockJiraServer(t, issueMockHandler(t))
 
 	t.Run("dry-run", func(t *testing.T) {
-		stdout, _ := issueRunOK(t, "--dry-run", "issue", "delete", sampleIssueKey)
+		stdout, _ := issueRunOK(t, "--dangerous", "--dry-run", "issue", "delete", sampleIssueKey)
 		if !containsAny(stdout, "delete issue") {
 			t.Fatalf("stdout=%q", stdout)
 		}
 	})
 
+	// Without --dangerous, the T2 second gate must block the command in both
+	// the dry-run and confirm steps with E_CONFIRMATION_REQUIRED (exit 5).
+	t.Run("dangerous gate blocks dry-run", func(t *testing.T) {
+		issueRunSilent(t, ExitConfirmRequired, "--dry-run", "issue", "delete", sampleIssueKey)
+	})
+	t.Run("dangerous gate blocks confirm", func(t *testing.T) {
+		issueRunSilent(t, ExitConfirmRequired, "--confirm", "sometoken", "issue", "delete", sampleIssueKey)
+	})
+
 	t.Run("cancelled", func(t *testing.T) {
-		_, _, err := runRootWithStdinIssue(t, "WRONG\n", "issue", "delete", sampleIssueKey)
+		_, _, err := runRootWithStdinIssue(t, "WRONG\n", "--dangerous", "issue", "delete", sampleIssueKey)
 		if err != ErrSilent {
 			t.Fatalf("expected ErrSilent, got %v", err)
 		}
@@ -528,7 +537,7 @@ func TestIssueDelete(t *testing.T) {
 	})
 
 	t.Run("force", func(t *testing.T) {
-		stdout, _ := issueRunOK(t, "--force", "issue", "delete", sampleIssueKey)
+		stdout, _ := issueRunOK(t, "--dangerous", "--force", "issue", "delete", sampleIssueKey)
 		if !containsAny(stdout, "Deleted PROJ-1") {
 			t.Fatalf("stdout=%q", stdout)
 		}
@@ -536,9 +545,9 @@ func TestIssueDelete(t *testing.T) {
 
 	t.Run("json confirmed", func(t *testing.T) {
 		resetCLIState(t)
-		token := dryRunConfirmToken(t, "--json", "issue", "delete", sampleIssueKey)
+		token := dryRunConfirmToken(t, "--dangerous", "--json", "issue", "delete", sampleIssueKey)
 		resetCLIState(t)
-		stdout, _ := runRootOK(t, "--confirm", token, "--json", "issue", "delete", sampleIssueKey)
+		stdout, _ := runRootOK(t, "--dangerous", "--confirm", token, "--json", "issue", "delete", sampleIssueKey)
 		var result map[string]string
 		decodeEnvelopeData(t, stdout, &result)
 		if result["key"] != sampleIssueKey || result["status"] != "deleted" {
@@ -711,29 +720,33 @@ func TestIssueBulkTransition(t *testing.T) {
 		}
 	})
 
+	t.Run("dangerous gate blocks without flag", func(t *testing.T) {
+		issueRunSilent(t, ExitConfirmRequired, "--dry-run", "issue", "bulk-transition", "In Progress", "--issues", "PROJ-1")
+	})
+
 	t.Run("dry-run", func(t *testing.T) {
-		stdout, _ := issueRunOK(t, "--dry-run", "issue", "bulk-transition", "In Progress", "--issues", "PROJ-1")
+		stdout, _ := issueRunOK(t, "--dangerous", "--dry-run", "issue", "bulk-transition", "In Progress", "--issues", "PROJ-1")
 		if !containsAny(stdout, "bulk-transition") {
 			t.Fatalf("stdout=%q", stdout)
 		}
 	})
 
 	t.Run("issues mixed results plain", func(t *testing.T) {
-		stdout, _ := issueRunOK(t, "issue", "bulk-transition", "In Progress", "--issues", "PROJ-1,PROJ-SKIP,PROJ-FAIL-T,PROJ-FAIL-D")
+		stdout, _ := issueRunOK(t, "--dangerous", "issue", "bulk-transition", "In Progress", "--issues", "PROJ-1,PROJ-SKIP,PROJ-FAIL-T,PROJ-FAIL-D")
 		if !containsAny(stdout, "Done:", "skipped", "failed") {
 			t.Fatalf("stdout=%q", stdout)
 		}
 	})
 
 	t.Run("issues json", func(t *testing.T) {
-		stdout, _ := issueRunOK(t, "--json", "issue", "bulk-transition", "In Progress", "--issues", "PROJ-1,PROJ-SKIP")
+		stdout, _ := issueRunOK(t, "--dangerous", "--json", "issue", "bulk-transition", "In Progress", "--issues", "PROJ-1,PROJ-SKIP")
 		if !containsAny(stdout, `"skipped"`, `"success"`, `"results"`) {
 			t.Fatalf("stdout=%q", stdout)
 		}
 	})
 
 	t.Run("jql", func(t *testing.T) {
-		stdout, _ := issueRunOK(t, "--json", "issue", "bulk-transition", "In Progress", "--jql", "project = BULKJQL")
+		stdout, _ := issueRunOK(t, "--dangerous", "--json", "issue", "bulk-transition", "In Progress", "--jql", "project = BULKJQL")
 		if !containsAny(stdout, `"total":2`, `"success"`) {
 			t.Fatalf("stdout=%q", stdout)
 		}

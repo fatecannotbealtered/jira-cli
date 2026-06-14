@@ -355,9 +355,12 @@ func TestIssueSearchAll_Pagination(t *testing.T) {
 	defer ts.Close()
 
 	c := newTestClient(ts.URL)
-	issues, err := c.Issues.SearchAll("project = P", nil)
+	issues, truncated, err := c.Issues.SearchAll("project = P", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if truncated {
+		t.Errorf("expected truncated=false for a small result set")
 	}
 	if len(issues) != 3 {
 		t.Errorf("expected 3 issues, got %d", len(issues))
@@ -1572,7 +1575,7 @@ func TestIssueSearchAll_Error(t *testing.T) {
 	defer ts.Close()
 
 	c := newTestClient(ts.URL)
-	_, err := c.Issues.SearchAll("project = P", []string{"summary"})
+	_, _, err := c.Issues.SearchAll("project = P", []string{"summary"})
 	if err == nil {
 		t.Fatal("expected API error")
 	}
@@ -1590,7 +1593,7 @@ func TestIssueSearchAll_WithFields(t *testing.T) {
 	defer ts.Close()
 
 	c := newTestClient(ts.URL)
-	issues, err := c.Issues.SearchAll("project = P", []string{"summary"})
+	issues, _, err := c.Issues.SearchAll("project = P", []string{"summary"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1620,7 +1623,7 @@ func TestIssueSearchAll_MaxTotalCap(t *testing.T) {
 	defer ts.Close()
 
 	c := newTestClient(ts.URL)
-	issues, err := c.Issues.SearchAll("project = P", nil)
+	issues, _, err := c.Issues.SearchAll("project = P", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

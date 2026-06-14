@@ -44,6 +44,7 @@ func TestErrorCodeFromStatus(t *testing.T) {
 		{401, ErrAuth},
 		{403, ErrForbidden},
 		{404, ErrNotFound},
+		{409, ErrConflict},
 		{429, ErrRateLimit},
 		{500, ErrServer},
 		{503, ErrServer},

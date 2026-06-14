@@ -407,22 +407,26 @@ func TestSprintCommands(t *testing.T) {
 		}
 	})
 
+	t.Run("close gate blocks without --dangerous", func(t *testing.T) {
+		runRootExpectSilentClean(t, ExitConfirmRequired, "--dry-run", "sprint", "close", "--sprint", "10")
+	})
+
 	t.Run("close dry-run", func(t *testing.T) {
-		stdout, _ := runRootOKCleanDomain(t, "--dry-run", "sprint", "close", "--sprint", "10")
+		stdout, _ := runRootOKCleanDomain(t, "--dangerous", "--dry-run", "sprint", "close", "--sprint", "10")
 		if !containsAny(stdout, "dry-run") {
 			t.Fatalf("expected dry-run, got: %s", stdout)
 		}
 	})
 
 	t.Run("close success", func(t *testing.T) {
-		stdout, _ := runRootOKCleanDomain(t, "sprint", "close", "--sprint", "10")
+		stdout, _ := runRootOKCleanDomain(t, "--dangerous", "sprint", "close", "--sprint", "10")
 		if !containsAny(stdout, "closed") {
 			t.Fatalf("expected close success, got: %s", stdout)
 		}
 	})
 
 	t.Run("close json", func(t *testing.T) {
-		stdout, _ := runRootOKCleanDomain(t, "--json", "sprint", "close", "--sprint", "10")
+		stdout, _ := runRootOKCleanDomain(t, "--dangerous", "--json", "sprint", "close", "--sprint", "10")
 		if !strings.Contains(stdout, "closed") {
 			t.Fatalf("expected JSON, got: %s", stdout)
 		}
@@ -779,8 +783,12 @@ func TestFilterCommands(t *testing.T) {
 		}
 	})
 
+	t.Run("delete gate blocks without --dangerous", func(t *testing.T) {
+		runRootExpectSilentClean(t, ExitConfirmRequired, "filter", "delete", "100")
+	})
+
 	t.Run("delete success", func(t *testing.T) {
-		stdout, _ := runRootOKCleanDomain(t, "filter", "delete", "100")
+		stdout, _ := runRootOKCleanDomain(t, "--dangerous", "filter", "delete", "100")
 		if !containsAny(stdout, "deleted") {
 			t.Fatalf("expected delete success, got: %s", stdout)
 		}

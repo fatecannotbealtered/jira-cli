@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/fatecannotbealtered/jira-cli/internal/api"
 	"github.com/fatecannotbealtered/jira-cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -39,9 +40,13 @@ var issueBulkTransitionCmd = &cobra.Command{
 				}
 			}
 		} else if jql != "" {
-			issues, err := client.Issues.SearchAll(jql, []string{"key"})
+			issues, truncated, err := client.Issues.SearchAll(jql, []string{"key"})
 			if err != nil {
 				return handleAPIError(err, jsonMode)
+			}
+			if truncated {
+				output.Error(fmt.Sprintf("JQL matched more than the %d-issue cap; narrow the query so the bulk operation does not silently skip issues", api.SearchAllCap))
+				return SilentErr(ExitBadArgs)
 			}
 			for _, issue := range issues {
 				issueKeys = append(issueKeys, issue.Key)

@@ -19,6 +19,7 @@ var searchCmd = &cobra.Command{
 
 func init() {
 	searchCmd.Flags().Int("limit", 50, "Max results (1-500)")
+	searchCmd.Flags().Int("start-at", 0, "0-based index of the first result (page forward with the nextStartAt from a prior response)")
 	searchCmd.Flags().String("fields", "", "Jira fields to fetch (comma-separated, e.g. summary,status,assignee)")
 	searchCmd.Flags().String("order-by", "", "Order by field")
 	searchCmd.Flags().Bool("all", false, "Fetch all results (auto-paginate)")
@@ -52,6 +53,12 @@ func runSearch(cmd *cobra.Command, args []string) error {
 		return SilentErr(ExitBadArgs)
 	}
 
+	startAt, _ := cmd.Flags().GetInt("start-at")
+	if startAt < 0 {
+		output.Error("--start-at must be >= 0")
+		return SilentErr(ExitBadArgs)
+	}
+
 	fieldsStr, _ := cmd.Flags().GetString("fields")
 	var fields []string
 	if fieldsStr != "" {
@@ -82,23 +89,28 @@ func runSearch(cmd *cobra.Command, args []string) error {
 	}
 
 	if fetchAll {
-		issues, err := client.Issues.SearchAll(jql, fields)
+		issues, truncated, err := client.Issues.SearchAll(jql, fields)
 		if err != nil {
 			return handleAPIError(err, jsonMode)
 		}
 		if jsonMode {
-			if rawOutputRequested(cmd) {
-				output.PrintJSON(map[string]any{
-					"total":  len(issues),
-					"issues": issues,
-				})
-			} else {
-				output.PrintJSON(map[string]any{
-					"total":  len(issues),
-					"issues": toFlatIssues(issues),
-				})
+			payload := map[string]any{
+				"total":     len(issues),
+				"truncated": truncated,
 			}
+			if truncated {
+				payload["cap"] = api.SearchAllCap
+			}
+			if rawOutputRequested(cmd) {
+				payload["issues"] = issues
+			} else {
+				payload["issues"] = toFlatIssues(issues)
+			}
+			output.PrintJSON(payload)
 			return nil
+		}
+		if truncated {
+			output.Info(fmt.Sprintf("Note: results truncated at %d issues; narrow the JQL to see the rest.", api.SearchAllCap))
 		}
 		if len(issues) == 0 {
 			output.Info("No issues found.")
@@ -109,6 +121,7 @@ func runSearch(cmd *cobra.Command, args []string) error {
 	}
 
 	result, err := client.Issues.Search(jql, api.SearchOptions{
+		StartAt:    startAt,
 		MaxResults: limit,
 		Fields:     fields,
 	})
@@ -120,12 +133,21 @@ func runSearch(cmd *cobra.Command, args []string) error {
 		if rawOutputRequested(cmd) {
 			output.PrintJSON(result)
 		} else {
-			output.PrintJSON(map[string]any{
+			nextStartAt := result.StartAt + len(result.Issues)
+			isLast := nextStartAt >= result.Total
+			payload := map[string]any{
 				"total":      result.Total,
 				"startAt":    result.StartAt,
 				"maxResults": result.MaxResults,
+				"isLast":     isLast,
 				"issues":     toFlatIssues(result.Issues),
-			})
+			}
+			// nextStartAt is the value to pass to page forward; omitted on the
+			// last page so an agent stops cleanly.
+			if !isLast {
+				payload["nextStartAt"] = nextStartAt
+			}
+			output.PrintJSON(payload)
 		}
 		return nil
 	}

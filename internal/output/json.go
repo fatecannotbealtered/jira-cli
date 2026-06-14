@@ -106,6 +106,8 @@ func ErrorCodeFromStatus(statusCode int) ErrorCode {
 		return ErrForbidden
 	case 404:
 		return ErrNotFound
+	case 409:
+		return ErrConflict
 	case 429:
 		return ErrRateLimit
 	default:
