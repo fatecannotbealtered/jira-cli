@@ -214,6 +214,16 @@ func blastRadius(cmd *cobra.Command) string {
 		return "deletes one Jira issue visible and deletable by the configured account"
 	case "jira-cli issue bulk-transition":
 		return "transitions multiple Jira issues selected by explicit keys or JQL"
+	case "jira-cli issue bulk-create":
+		return "creates multiple Jira issues from a file via the native bulk endpoint"
+	case "jira-cli issue backlog-move":
+		return "moves multiple Jira issues out of their sprint back to the backlog"
+	case "jira-cli issue bulk-assign":
+		return "assigns or unassigns multiple Jira issues selected by explicit keys or JQL"
+	case "jira-cli issue bulk-edit":
+		return "applies the same field changes to multiple Jira issues selected by explicit keys or JQL"
+	case "jira-cli issue rank":
+		return "reorders multiple Jira issues relative to an anchor issue"
 	case "jira-cli sprint close":
 		return "closes one Jira sprint"
 	case "jira-cli filter delete":
@@ -289,6 +299,13 @@ func commandMetaCatalog() map[string]commandMeta {
 		"jira-cli issue comment add":    {schema: "comment", examples: []string{"jira-cli issue comment add PROJ-1 --body 'Looking into it' --dry-run --compact", "jira-cli issue comment add PROJ-1 --body 'Looking into it' --confirm <token> --compact"}},
 		"jira-cli issue comment delete": {schema: "comment_delete_result", examples: []string{"jira-cli issue comment delete PROJ-1 --id 10000 --dry-run --compact", "jira-cli issue comment delete PROJ-1 --id 10000 --confirm <token> --compact"}},
 		"jira-cli issue worklog add":    {schema: "worklog", examples: []string{"jira-cli issue worklog add PROJ-1 --time 1h --dry-run --compact", "jira-cli issue worklog add PROJ-1 --time 1h --confirm <token> --compact"}},
+
+		// Issues (batch writes): plural inputs, dry-run then confirm, aggregated items[]/summary.
+		"jira-cli issue bulk-create":  {schema: "batch_create_result", examples: []string{"jira-cli issue bulk-create --file issues.json --dry-run --compact", "jira-cli issue bulk-create --file issues.json --confirm <token> --compact"}},
+		"jira-cli issue backlog-move": {schema: "batch_result", examples: []string{"jira-cli issue backlog-move --issues PROJ-1,PROJ-2 --dry-run --compact", "jira-cli issue backlog-move --issues PROJ-1,PROJ-2 --confirm <token> --compact"}},
+		"jira-cli issue bulk-assign":  {schema: "batch_result", examples: []string{"jira-cli issue bulk-assign --issues PROJ-1,PROJ-2 --assignee jdoe --dry-run --compact", "jira-cli issue bulk-assign --issues PROJ-1,PROJ-2 --assignee jdoe --confirm <token> --compact"}},
+		"jira-cli issue bulk-edit":    {schema: "batch_result", examples: []string{"jira-cli issue bulk-edit --issues PROJ-1,PROJ-2 --priority High --dry-run --compact", "jira-cli issue bulk-edit --issues PROJ-1,PROJ-2 --priority High --confirm <token> --compact"}},
+		"jira-cli issue rank":         {schema: "batch_result", examples: []string{"jira-cli issue rank --issues PROJ-1,PROJ-2 --after PROJ-9 --dry-run --compact", "jira-cli issue rank --issues PROJ-1,PROJ-2 --after PROJ-9 --confirm <token> --compact"}},
 
 		// Issues (write-dangerous): --dangerous in both steps.
 		"jira-cli issue delete":          {schema: "delete_result", examples: []string{"jira-cli issue delete PROJ-1 --dangerous --dry-run --compact", "jira-cli issue delete PROJ-1 --dangerous --confirm <token> --compact"}},
@@ -405,10 +422,18 @@ func referenceSchemas() map[string]referenceDataSchema {
 		"comment_delete_result":  {Shape: "object", Fields: []string{"issueKey", "commentId", "status"}},
 		"filter_delete_result":   {Shape: "object", Fields: []string{"filterId", "status"}},
 		"bulk_transition_result": {Shape: "object", Fields: []string{"targetStatus", "total", "success", "skipped", "failed", "results"}},
-		"sprint_move_result":     {Shape: "object", Fields: []string{"sprintId", "issues"}},
-		"sprint_close_result":    {Shape: "object", Fields: []string{"sprintId", "state", "changed"}},
-		"auth_result":            {Shape: "object", Fields: []string{"status", "displayName", "username"}},
-		"logout_result":          {Shape: "object", Fields: []string{"status"}},
+
+		// Batch results (cmd/bulk_common.go): one aggregated items[]/summary for
+		// every batch command, class A or B. items[].target is the natural input
+		// key (issue key, or 0-based file index for bulk-create); items[].error
+		// carries the same {code,retryable} taxonomy as the top-level envelope.
+		// error.message relays upstream Jira text, so it is _untrusted content.
+		"batch_result":        {Shape: "object", Fields: []string{"action", "items", "summary", "_untrusted"}, UntrustedFields: []string{"items[].error.message"}},
+		"batch_create_result": {Shape: "object", Fields: []string{"action", "items", "summary", "_untrusted"}, UntrustedFields: []string{"items[].error.message"}},
+		"sprint_move_result":  {Shape: "object", Fields: []string{"sprintId", "issues"}},
+		"sprint_close_result": {Shape: "object", Fields: []string{"sprintId", "state", "changed"}},
+		"auth_result":         {Shape: "object", Fields: []string{"status", "displayName", "username"}},
+		"logout_result":       {Shape: "object", Fields: []string{"status"}},
 
 		// Self-description documents (cmd/reference.go, context.go, doctor.go, changelog.go, update.go).
 		"reference":     {Shape: "object", Fields: []string{"tool", "version", "security_tier", "release_readiness", "root", "commands", "exit_codes", "error_codes", "schemas"}},
