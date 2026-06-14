@@ -267,6 +267,7 @@ func commandMetaCatalog() map[string]commandMeta {
 		"jira-cli issue watchers":     {schema: "user[]", examples: []string{"jira-cli issue watchers PROJ-1 --compact"}},
 		"jira-cli issue attachments":  {schema: "attachment[]", examples: []string{"jira-cli issue attachments PROJ-1 --compact"}},
 		"jira-cli issue remote-links": {schema: "remote_link[]", examples: []string{"jira-cli issue remote-links PROJ-1 --compact"}},
+		"jira-cli issue link list":    {schema: "issue_link_row[]", examples: []string{"jira-cli issue link list PROJ-1 --compact"}},
 		"jira-cli issue comment list": {schema: "comment[]", examples: []string{"jira-cli issue comment list PROJ-1 --compact"}},
 		"jira-cli issue worklog list": {schema: "worklog[]", examples: []string{"jira-cli issue worklog list PROJ-1 --compact"}},
 
@@ -318,6 +319,7 @@ func commandMetaCatalog() map[string]commandMeta {
 		"jira-cli sprint create": {schema: "sprint", examples: []string{"jira-cli sprint create --board 1 --name 'Sprint 5' --dry-run --compact", "jira-cli sprint create --board 1 --name 'Sprint 5' --confirm <token> --compact"}},
 		"jira-cli sprint update": {schema: "sprint", examples: []string{"jira-cli sprint update --sprint 10 --name 'Renamed' --dry-run --compact", "jira-cli sprint update --sprint 10 --name 'Renamed' --confirm <token> --compact"}},
 		"jira-cli sprint move":   {schema: "sprint_move_result", examples: []string{"jira-cli sprint move --sprint 10 --issues PROJ-1,PROJ-2 --dry-run --compact", "jira-cli sprint move --sprint 10 --issues PROJ-1,PROJ-2 --confirm <token> --compact"}},
+		"jira-cli sprint report": {schema: "sprint_report", examples: []string{"jira-cli sprint report 10 --board 1 --compact"}},
 		"jira-cli sprint close":  {schema: "sprint_close_result", examples: []string{"jira-cli sprint close --sprint 10 --dangerous --dry-run --compact", "jira-cli sprint close --sprint 10 --dangerous --confirm <token> --compact"}},
 
 		// Users.
@@ -363,6 +365,13 @@ func referenceSchemas() map[string]referenceDataSchema {
 
 		// Sprint active groups each sprint with its issues.
 		"sprint_with_issues[]": {Shape: "array", Fields: []string{"sprint", "issues"}},
+
+		// Issue link rows (cmd/flatten.go FlatIssueLink): one row per link.
+		"issue_link_row[]": {Shape: "array", Fields: []string{"id", "direction", "type", "linkedKey", "linkedSummary", "linkedStatus", "_untrusted"}, UntrustedFields: []string{"linkedSummary"}},
+
+		// Sprint velocity/completion report (api.SprintReport). source records
+		// whether figures came from the Greenhopper chart or were computed.
+		"sprint_report": {Shape: "object", Fields: []string{"sprintId", "sprintName", "state", "committedIssues", "completedIssues", "notCompletedIssues", "removedIssues", "committedPoints", "completedPoints", "notCompletedPoints", "source"}},
 
 		// Search/filter run pagination wrapper (cmd/search.go, filter.go).
 		"search_page": {Shape: "object", Fields: []string{"total", "startAt", "maxResults", "isLast", "nextStartAt", "issues"}},

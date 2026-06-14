@@ -30,6 +30,20 @@ type FlatSprint struct {
 	Goal      string `json:"goal,omitempty"`
 }
 
+// FlatIssueLink is a flattened representation of a single issue link row: the
+// link's id, its direction ("inward"/"outward") and type name, and the linked
+// issue's key, summary, and status. linkedSummary is external content and is
+// tagged in _untrusted.
+type FlatIssueLink struct {
+	ID            string   `json:"id"`
+	Direction     string   `json:"direction"`
+	Type          string   `json:"type"`
+	LinkedKey     string   `json:"linkedKey"`
+	LinkedSummary string   `json:"linkedSummary,omitempty"`
+	LinkedStatus  string   `json:"linkedStatus,omitempty"`
+	Untrusted     []string `json:"_untrusted,omitempty"`
+}
+
 // FlatBoard is a flattened representation of a Jira board.
 type FlatBoard struct {
 	ID          string `json:"id"`

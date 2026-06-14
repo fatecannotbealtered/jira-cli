@@ -11,6 +11,7 @@ import (
 func init() {
 	issueLinkCmd.Flags().String("to", "", "Target issue key (required)")
 	issueLinkCmd.Flags().String("type", "", "Link type name (required)")
+	issueLinkCmd.AddCommand(issueLinkListCmd)
 	issueCmd.AddCommand(issueLinkCmd)
 
 	issueCmd.AddCommand(issueUnlinkCmd)
@@ -63,6 +64,42 @@ var issueLinkCmd = &cobra.Command{
 			return nil
 		}
 		output.Success(fmt.Sprintf("Linked %s → %s (%s)", args[0], to, linkType))
+		return nil
+	},
+}
+
+var issueLinkListCmd = &cobra.Command{
+	Use:   "list <ISSUE_KEY>",
+	Short: "List an issue's links",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		client, _, err := newClient()
+		if err != nil {
+			return err
+		}
+		links, err := client.Issues.GetLinks(args[0])
+		if err != nil {
+			return handleAPIError(err, jsonMode)
+		}
+		if jsonMode {
+			printIssueLinksJSON(links)
+			return nil
+		}
+		if len(links) == 0 {
+			output.Info("No links.")
+			return nil
+		}
+		headers := []string{"LINK ID", "DIRECTION", "TYPE", "LINKED KEY", "SUMMARY", "STATUS"}
+		rows := make([][]string, len(links))
+		for i := range links {
+			row := toFlatIssueLink(&links[i])
+			summary := row.LinkedSummary
+			if len(summary) > 50 {
+				summary = summary[:47] + "..."
+			}
+			rows[i] = []string{row.ID, row.Direction, row.Type, row.LinkedKey, summary, row.LinkedStatus}
+		}
+		output.Table(headers, rows)
 		return nil
 	},
 }

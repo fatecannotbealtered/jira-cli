@@ -102,6 +102,47 @@ func printIssuesJSON(issues []api.Issue, raw bool, fields []string) {
 	output.PrintJSON(flat)
 }
 
+// toFlatIssueLink flattens one API IssueLink into a row. A link points either
+// inward or outward; the direction name (e.g. "blocks"/"is blocked by") comes
+// from the matching side of the link type. The linked issue's summary is
+// external content and tagged _untrusted.
+func toFlatIssueLink(link *api.IssueLink) output.FlatIssueLink {
+	row := output.FlatIssueLink{ID: link.ID}
+	linked := link.OutwardIssue
+	if linked != nil {
+		row.Direction = "outward"
+		row.Type = link.Type.Outward
+	} else {
+		linked = link.InwardIssue
+		row.Direction = "inward"
+		row.Type = link.Type.Inward
+	}
+	// Fall back to the type's base name when a direction phrase is absent.
+	if row.Type == "" {
+		row.Type = link.Type.Name
+	}
+	if linked != nil {
+		row.LinkedKey = linked.Key
+		if linked.Fields != nil {
+			row.LinkedSummary = linked.Fields.Summary
+			row.LinkedStatus = linked.Fields.Status.Name
+		}
+	}
+	if row.LinkedSummary != "" {
+		row.Untrusted = []string{"linkedSummary"}
+	}
+	return row
+}
+
+// printIssueLinksJSON outputs issue links as flattened JSON rows.
+func printIssueLinksJSON(links []api.IssueLink) {
+	rows := make([]output.FlatIssueLink, len(links))
+	for i := range links {
+		rows[i] = toFlatIssueLink(&links[i])
+	}
+	output.PrintJSON(rows)
+}
+
 // toFlatSprint converts an API Sprint to a token-efficient FlatSprint.
 func toFlatSprint(s *api.Sprint) output.FlatSprint {
 	return output.FlatSprint{

@@ -154,6 +154,7 @@ After any successful self-update, review signature/checksum status, ensure `skil
 ```bash
 jira-cli search "project = PROJ AND assignee = currentUser() AND status != Done" --limit 50 --compact
 jira-cli issue get PROJ-123 --fields key,summary,status,assignee,updated --compact
+jira-cli issue link list PROJ-123 --compact   # link rows: direction + type, linked key/summary/status
 ```
 
 ### Create an issue
@@ -179,6 +180,7 @@ jira-cli issue comment add PROJ-123 --body "Completed and verified." --confirm "
 jira-cli board list --project PROJ --compact
 jira-cli sprint active --board 42 --compact
 jira-cli board backlog --board 42 --limit 50 --compact
+jira-cli sprint report 10 --board 42 --compact   # committed vs completed counts + story points (source: greenhopper|computed)
 TOKEN=$(jira-cli sprint move --sprint 10 --issues PROJ-123,PROJ-124 --dry-run --compact | jq -r '.data.confirm_token')
 jira-cli sprint move --sprint 10 --issues PROJ-123,PROJ-124 --confirm "$TOKEN" --compact
 ```
