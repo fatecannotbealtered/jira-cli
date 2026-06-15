@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Security fixes are applied to the latest minor release on the default branch (`main`). Release binaries are published via GitHub Releases and the npm package `@ananke/jira-cli`.
+Security fixes are applied to the latest minor release on the default branch (`main`). Release binaries are published via GitHub Releases and the npm package `@fateforge/jira-cli`.
 
 ## Reporting a vulnerability
 
