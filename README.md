@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/fatecannotbealtered/jira-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/fatecannotbealtered/jira-cli/actions/workflows/ci.yml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/fatecannotbealtered/jira-cli)](https://goreportcard.com/report/github.com/fatecannotbealtered/jira-cli)
-[![npm version](https://img.shields.io/npm/v/@fatecannotbealtered-/jira-cli.svg)](https://www.npmjs.com/package/@fatecannotbealtered-/jira-cli)
+[![npm version](https://img.shields.io/npm/v/@ananke/jira-cli.svg)](https://www.npmjs.com/package/@ananke/jira-cli)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 > Agent-native Jira Data Center CLI for issues, JQL search, sprints, boards, epics, projects, users, filters, worklogs, links, and attachments.
@@ -15,7 +15,7 @@ Paste this block into the AI Agent that will operate Jira Data Center. It instal
 
 ```bash
 # Install CLI and Agent Skill.
-npm install -g @fatecannotbealtered-/jira-cli
+npm install -g @ananke/jira-cli
 npx skills add fatecannotbealtered/jira-cli -y -g
 
 # Provide runtime context. Replace placeholders in the local shell/secret manager.

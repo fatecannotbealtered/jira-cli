@@ -7,9 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.4] - 2026-06-15
+
 ### Added
 
 - Batch issue commands, each one agent-facing command with one confirm token and one aggregated `items[]`/`summary` result (per-item `{target, ok, error{code,retryable}}`, no whole-batch rollback): `issue bulk-create --file` (native `/issue/bulk`), `issue backlog-move` (native `/backlog/issue`, symmetric inverse of `sprint move`), `issue bulk-assign`, `issue bulk-edit` (client-side loop over per-issue field writes), and `issue rank` (native `/issue/rank`). All accept plural `--issues` (comma-separated or repeatable) and/or `--jql` selection, support `--continue-on-error` (default `true`), and auto-chunk to the Jira ≤50 cap so a large batch never 400s upstream. New `batch_result` / `batch_create_result` output schemas and runnable dry-run→confirm examples in `reference`.
+
+### Changed
+
+- npm scope migration `@fatecannotbealtered-` → `@ananke` (the hyphenless org name was taken on npm, so the package and its platform binaries moved to the `@ananke` scope). The npm package is now `@ananke/jira-cli` and the optional platform packages are `@ananke/jira-cli-<os>-<arch>`. The GitHub org, Go module path, and the `npx skills add` Skill source are unchanged.
 
 ### Fixed
 
@@ -223,7 +229,7 @@ Initial release of jira-cli for Jira Data Center.
 - **Beautiful output**: colored tables with CJK character width support.
 - **Custom fields**: set custom fields during create and edit via `--field "Name=Value"`.
 - **Environment variables**: `JIRA_HOST` and `JIRA_TOKEN` override config file for CI/Agent use.
-- **npm distribution**: `npm install -g @fatecannotbealtered-/jira-cli` with bundled AI Agent Skill.
+- **npm distribution**: `npm install -g @ananke/jira-cli` with bundled AI Agent Skill.
 - **Cross-platform**: Linux, macOS, Windows (x64 + arm64) via GoReleaser.
 - **E2E test scripts**: Comprehensive PowerShell E2E script (`scripts/e2e-full.ps1`) covering all 55+ commands against a real Jira DC instance, with CSV report output and read-only mode.
 - **Audit logging**: Automatic JSONL audit trail for all write commands (`~/.jira-cli/audit/`), with monthly file rotation and configurable retention (default 3 months). Disable with `JIRA_NO_AUDIT=1`.

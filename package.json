@@ -1,6 +1,6 @@
 {
-  "name": "@fatecannotbealtered-/jira-cli",
-  "version": "1.1.3",
+  "name": "@ananke/jira-cli",
+  "version": "1.1.4",
   "description": "Jira Data Center CLI for AI Agents - manage issues, sprints, boards, epics, projects, users, filters, worklogs, links, and attachments",
   "keywords": [
     "jira",
@@ -28,12 +28,12 @@
     "jira-cli": "scripts/run.js"
   },
   "optionalDependencies": {
-    "@fatecannotbealtered-/jira-cli-darwin-arm64": "1.1.3",
-    "@fatecannotbealtered-/jira-cli-darwin-x64": "1.1.3",
-    "@fatecannotbealtered-/jira-cli-linux-arm64": "1.1.3",
-    "@fatecannotbealtered-/jira-cli-linux-x64": "1.1.3",
-    "@fatecannotbealtered-/jira-cli-win32-arm64": "1.1.3",
-    "@fatecannotbealtered-/jira-cli-win32-x64": "1.1.3"
+    "@ananke/jira-cli-darwin-arm64": "1.1.4",
+    "@ananke/jira-cli-darwin-x64": "1.1.4",
+    "@ananke/jira-cli-linux-arm64": "1.1.4",
+    "@ananke/jira-cli-linux-x64": "1.1.4",
+    "@ananke/jira-cli-win32-arm64": "1.1.4",
+    "@ananke/jira-cli-win32-x64": "1.1.4"
   },
   "files": [
     "scripts/run.js",

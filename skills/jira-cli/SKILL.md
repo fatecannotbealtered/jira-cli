@@ -1,10 +1,10 @@
 ---
 name: jira-cli
-version: "1.1.3"
+version: "1.1.4"
 description: "Jira Data Center CLI for AI agents; triggers for Jira DC issue, sprint, board, epic, project, user, filter, JQL search, PAT auth, audit, update, and automation tasks. Not for Jira Cloud."
 license: MIT
 user-invocable: true
-metadata: {"requires":{"bins":["jira-cli"],"min_version":"1.1.3"}}
+metadata: {"requires":{"bins":["jira-cli"],"min_version":"1.1.4"}}
 ---
 
 # jira-cli
@@ -14,7 +14,7 @@ Jira Data Center CLI for AI agents. It supports self-hosted Jira Data Center / J
 ```bash
 # Please install jira-cli and use it for Jira Data Center operations going forward.
 # JSON is the default machine format; use --format text only for human-facing output.
-npm install -g @fatecannotbealtered-/jira-cli
+npm install -g @ananke/jira-cli
 
 # Install the matching agent Skill.
 npx skills add fatecannotbealtered/jira-cli -y -g

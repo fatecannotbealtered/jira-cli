@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/fatecannotbealtered/jira-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/fatecannotbealtered/jira-cli/actions/workflows/ci.yml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/fatecannotbealtered/jira-cli)](https://goreportcard.com/report/github.com/fatecannotbealtered/jira-cli)
-[![npm version](https://img.shields.io/npm/v/@fatecannotbealtered-/jira-cli.svg)](https://www.npmjs.com/package/@fatecannotbealtered-/jira-cli)
+[![npm version](https://img.shields.io/npm/v/@ananke/jira-cli.svg)](https://www.npmjs.com/package/@ananke/jira-cli)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 > 面向 AI Agent 的 Jira Data Center CLI，覆盖 Issue、JQL 搜索、Sprint、Board、Epic、项目、用户、Filter、工时、链接和附件。
@@ -15,7 +15,7 @@
 
 ```bash
 # 安装 CLI 和 Agent Skill。
-npm install -g @fatecannotbealtered-/jira-cli
+npm install -g @ananke/jira-cli
 npx skills add fatecannotbealtered/jira-cli -y -g
 
 # 提供运行上下文。把占位符替换为本地 shell/密钥管理器里的值。

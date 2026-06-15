@@ -29,7 +29,7 @@ import (
 const (
 	updateRepo              = "fatecannotbealtered/jira-cli"
 	updateAPIBase           = "https://api.github.com/repos/" + updateRepo
-	updatePackageName       = "@fatecannotbealtered-/jira-cli"
+	updatePackageName       = "@ananke/jira-cli"
 	updateBinaryName        = "jira-cli"
 	updateSkillRepo         = updateRepo
 	maxReleaseJSONBytes     = 5 << 20
@@ -57,7 +57,7 @@ verifying the signed checksums.txt when possible, verifying the archive checksum
 and replacing the current standalone binary.
 
 Package-manager installs are detected where possible. For npm installs, use
-npm install -g @fatecannotbealtered-/jira-cli@latest unless --force is set.`,
+npm install -g @ananke/jira-cli@latest unless --force is set.`,
 	Args: cobra.NoArgs,
 	RunE: runUpdate,
 }
