@@ -14,7 +14,7 @@ Jira Data Center CLI for AI agents. It supports self-hosted Jira Data Center / J
 ```bash
 # Please install jira-cli and use it for Jira Data Center operations going forward.
 # JSON is the default machine format; use --format text only for human-facing output.
-npm install -g @ananke/jira-cli
+npm install -g @fateforge/jira-cli
 
 # Install the matching agent Skill.
 npx skills add fatecannotbealtered/jira-cli -y -g

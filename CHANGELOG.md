@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- npm scope migration `@fatecannotbealtered-` → `@ananke` (the hyphenless org name was taken on npm, so the package and its platform binaries moved to the `@ananke` scope). The npm package is now `@ananke/jira-cli` and the optional platform packages are `@ananke/jira-cli-<os>-<arch>`. The GitHub org, Go module path, and the `npx skills add` Skill source are unchanged.
+- npm scope migration `@fatecannotbealtered-` → `@fateforge` (the hyphenless org name was taken on npm, so the package and its platform binaries moved to the `@fateforge` scope). The npm package is now `@fateforge/jira-cli` and the optional platform packages are `@fateforge/jira-cli-<os>-<arch>`. The GitHub org, Go module path, and the `npx skills add` Skill source are unchanged.
 
 ### Fixed
 
@@ -229,7 +229,7 @@ Initial release of jira-cli for Jira Data Center.
 - **Beautiful output**: colored tables with CJK character width support.
 - **Custom fields**: set custom fields during create and edit via `--field "Name=Value"`.
 - **Environment variables**: `JIRA_HOST` and `JIRA_TOKEN` override config file for CI/Agent use.
-- **npm distribution**: `npm install -g @ananke/jira-cli` with bundled AI Agent Skill.
+- **npm distribution**: `npm install -g @fateforge/jira-cli` with bundled AI Agent Skill.
 - **Cross-platform**: Linux, macOS, Windows (x64 + arm64) via GoReleaser.
 - **E2E test scripts**: Comprehensive PowerShell E2E script (`scripts/e2e-full.ps1`) covering all 55+ commands against a real Jira DC instance, with CSV report output and read-only mode.
 - **Audit logging**: Automatic JSONL audit trail for all write commands (`~/.jira-cli/audit/`), with monthly file rotation and configurable retention (default 3 months). Disable with `JIRA_NO_AUDIT=1`.
