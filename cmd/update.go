@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,7 +17,6 @@ import (
 	"os/exec"
 	pathpkg "path"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -53,8 +53,10 @@ var updateCmd = &cobra.Command{
 	Use:   "update",
 	Short: "Update jira-cli to a GitHub release",
 	Long: `Update jira-cli by downloading the matching GitHub Release asset,
-verifying the signed checksums.txt when possible, verifying the archive checksum,
-and replacing the current standalone binary.
+verifying the Sigstore signature on checksums.txt in-process against this repo's
+tagged release workflow identity, verifying the archive checksum, and replacing
+the current standalone binary. An unsigned or unverifiable release is refused;
+there is no skip path.
 
 Package-manager installs are detected where possible. For npm installs, use
 npm install -g @fateforge/jira-cli@latest unless --force is set.`,
@@ -201,10 +203,12 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 	}
 	signatureStatus, err := verifyChecksumSignature(cmd.Context(), checksumData, signatureBundleAsset, signatureBundleFound)
 	if err != nil {
-		return handleUpdateError(err, ExitNetwork)
+		// Integrity failure is non-retryable: a missing or invalid signature is
+		// a supply-chain red flag, not a transient blip an agent should retry.
+		return handleUpdateError(fmt.Errorf("verifying release signature: %w", err), ExitGeneric)
 	}
 	if err := verifyArchiveChecksum(archiveName, archiveData, checksumData); err != nil {
-		return handleUpdateError(err, ExitNetwork)
+		return handleUpdateError(err, ExitGeneric)
 	}
 	binaryData, err := extractBinaryFromArchive(archiveName, archiveData, binaryNameForPlatform(platform))
 	if err != nil {
@@ -244,6 +248,8 @@ func updateErrorCode(exitCode int) output.ErrorCode {
 		return output.ErrValidation
 	case ExitNetwork:
 		return output.ErrNetwork
+	case ExitGeneric:
+		return output.ErrIntegrity
 	default:
 		return output.ErrUnknown
 	}
@@ -353,18 +359,14 @@ func truncateForUpdateError(s string, n int) string {
 	return s[:n] + "..."
 }
 
+// verifyChecksumSignature enforces a mandatory, in-process Sigstore signature
+// check on checksums.txt before the release is trusted. There is no skip path: a
+// release without a signature bundle, or one whose signature does not verify
+// against this repo's release-workflow identity, is refused. The returned status
+// is always "verified" on the nil-error path.
 func verifyChecksumSignature(ctx context.Context, checksumData []byte, bundleAsset githubReleaseAsset, bundleFound bool) (string, error) {
 	if !bundleFound {
-		if updateRequireSignature() {
-			return "missing_bundle", fmt.Errorf("release checksums.txt signature bundle not found")
-		}
-		return "missing_bundle", nil
-	}
-	if _, err := exec.LookPath("cosign"); err != nil {
-		if updateRequireSignature() {
-			return "cosign_missing", fmt.Errorf("cosign is not installed; checksum signature verification cannot run")
-		}
-		return "skipped_cosign_missing", nil
+		return "missing", errors.New("release does not include checksums.txt.sigstore.json; refusing to install an unsigned release")
 	}
 
 	bundleData, err := downloadUpdateURL(ctx, bundleAsset.BrowserDownloadURL, maxSignatureBundleBytes)
@@ -386,27 +388,10 @@ func verifyChecksumSignature(ctx context.Context, checksumData []byte, bundleAss
 		return "failed", fmt.Errorf("writing checksum signature bundle: %w", err)
 	}
 
-	identity := "^https://github\\.com/" + regexp.QuoteMeta(updateRepo) + "/\\.github/workflows/release\\.yml@refs/tags/v.*$"
-	command := exec.CommandContext(ctx, "cosign",
-		"verify-blob",
-		"--bundle", bundlePath,
-		"--certificate-identity-regexp", identity,
-		"--certificate-oidc-issuer", "https://token.actions.githubusercontent.com",
-		checksumPath,
-	)
-	outputBytes, err := command.CombinedOutput()
-	if err != nil {
-		msg := strings.TrimSpace(string(outputBytes))
-		if msg != "" {
-			return "failed", fmt.Errorf("verifying checksum signature: %w: %s", err, truncateForUpdateError(msg, 300))
-		}
-		return "failed", fmt.Errorf("verifying checksum signature: %w", err)
+	if err := updateVerifySignature(checksumPath, bundlePath, updateSignerIdentityRegexp()); err != nil {
+		return "failed", err
 	}
 	return "verified", nil
-}
-
-func updateRequireSignature() bool {
-	return updateGetenv("JIRA_CLI_REQUIRE_SIGNATURE") == "1"
 }
 
 func fetchUpdateRelease(ctx context.Context, targetVersion string) (*githubRelease, error) {
