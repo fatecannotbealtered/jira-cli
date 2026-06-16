@@ -28,12 +28,12 @@
     "jira-cli": "scripts/run.js"
   },
   "optionalDependencies": {
-    "@fateforge/jira-cli-darwin-arm64": "1.1.4",
-    "@fateforge/jira-cli-darwin-x64": "1.1.4",
-    "@fateforge/jira-cli-linux-arm64": "1.1.4",
-    "@fateforge/jira-cli-linux-x64": "1.1.4",
-    "@fateforge/jira-cli-win32-arm64": "1.1.4",
-    "@fateforge/jira-cli-win32-x64": "1.1.4"
+    "@fateforge/jira-cli-darwin-arm64": "1.1.5",
+    "@fateforge/jira-cli-darwin-x64": "1.1.5",
+    "@fateforge/jira-cli-linux-arm64": "1.1.5",
+    "@fateforge/jira-cli-linux-x64": "1.1.5",
+    "@fateforge/jira-cli-win32-arm64": "1.1.5",
+    "@fateforge/jira-cli-win32-x64": "1.1.5"
   },
   "files": [
     "scripts/run.js",
