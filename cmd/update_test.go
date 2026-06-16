@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -25,6 +26,7 @@ func resetUpdateState(t *testing.T) {
 	oldGOARCH := updateGOARCH
 	oldGetenv := updateGetenv
 	oldSkillSync := updateSkillSync
+	oldVerifySig := updateVerifySignature
 	t.Cleanup(func() {
 		version = oldVersion
 		updateHTTPClient = oldClient
@@ -34,12 +36,17 @@ func resetUpdateState(t *testing.T) {
 		updateGOARCH = oldGOARCH
 		updateGetenv = oldGetenv
 		updateSkillSync = oldSkillSync
+		updateVerifySignature = oldVerifySig
 	})
 	version = "1.0.0"
 	updateGOOS = func() string { return "windows" }
 	updateGOARCH = func() string { return "amd64" }
 	updateGetenv = func(string) string { return "" }
 	updateSkillSync = func(context.Context, string) error { return nil }
+	// In-process Sigstore verification is stubbed in tests; a live OIDC-signed
+	// bundle cannot be produced in a unit test. Fail-closed control flow is
+	// covered by overriding this with an error-returning stub.
+	updateVerifySignature = func(_, _, _ string) error { return nil }
 }
 
 func newUpdateTestServer(t *testing.T, releaseVersion string, archive []byte) *httptest.Server {
@@ -51,16 +58,20 @@ func newUpdateTestServer(t *testing.T, releaseVersion string, archive []byte) *h
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/releases/latest", "/releases/tags/v" + releaseVersion:
-			_, _ = fmt.Fprintf(w, `{"tag_name":"v%s","assets":[{"name":%q,"browser_download_url":%q},{"name":"checksums.txt","browser_download_url":%q}]}`,
+			_, _ = fmt.Fprintf(w, `{"tag_name":"v%s","assets":[{"name":%q,"browser_download_url":%q},{"name":"checksums.txt","browser_download_url":%q},{"name":"checksums.txt.sigstore.json","browser_download_url":%q}]}`,
 				releaseVersion,
 				archiveName,
 				serverURL+"/assets/"+archiveName,
 				serverURL+"/assets/checksums.txt",
+				serverURL+"/assets/checksums.txt.sigstore.json",
 			)
 		case "/assets/" + archiveName:
 			_, _ = w.Write(archive)
 		case "/assets/checksums.txt":
 			_, _ = fmt.Fprint(w, checksums)
+		case "/assets/checksums.txt.sigstore.json":
+			// Opaque bundle bytes; in-process verification is stubbed in tests.
+			_, _ = fmt.Fprint(w, `{"bundle":"stub"}`)
 		default:
 			http.NotFound(w, r)
 		}
@@ -264,5 +275,25 @@ func TestManagerUpdateCommandVersionFormats(t *testing.T) {
 	}
 	if got := managerUpdateCommand("go", "1.2.3"); got != "go install github.com/"+updateRepo+"/cmd/jira-cli@v1.2.3" {
 		t.Fatalf("go command = %q", got)
+	}
+}
+
+func TestVerifyChecksumSignature_FailClosed(t *testing.T) {
+	resetCLIState(t)
+	resetUpdateState(t)
+
+	// No bundle in the release: refused, not skipped.
+	if _, err := verifyChecksumSignature(context.Background(), []byte("sums"), githubReleaseAsset{}, false); err == nil {
+		t.Fatal("missing signature bundle must be refused")
+	} else if !strings.Contains(err.Error(), "unsigned release") {
+		t.Fatalf("unexpected error for missing bundle: %v", err)
+	}
+
+	// Bundle present but verification fails: aborts.
+	srv := newUpdateTestServer(t, "1.2.3", makeUpdateZip(t, "jira-cli.exe", []byte("b")))
+	asset := githubReleaseAsset{Name: "checksums.txt.sigstore.json", BrowserDownloadURL: srv.URL + "/assets/checksums.txt.sigstore.json"}
+	updateVerifySignature = func(_, _, _ string) error { return errors.New("certificate identity mismatch") }
+	if _, err := verifyChecksumSignature(context.Background(), []byte("sums"), asset, true); err == nil {
+		t.Fatal("signature verification failure must abort")
 	}
 }
