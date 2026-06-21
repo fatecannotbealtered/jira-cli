@@ -228,8 +228,6 @@ func blastRadius(cmd *cobra.Command) string {
 		return "closes one Jira sprint"
 	case "jira-cli filter delete":
 		return "deletes one saved Jira filter visible and deletable by the configured account"
-	case "jira-cli update":
-		return "replaces the local jira-cli executable"
 	default:
 		return "modifies Jira state within the configured account permissions"
 	}
@@ -353,8 +351,9 @@ func commandMetaCatalog() map[string]commandMeta {
 		"jira-cli doctor":    {schema: "doctor", examples: []string{"jira-cli doctor --compact"}},
 		"jira-cli changelog": {schema: "changelog", examples: []string{"jira-cli changelog --since 1.0.0 --compact"}},
 
-		// Lifecycle (local write): dry-run then confirm.
-		"jira-cli update": {schema: "update_report", examples: []string{"jira-cli update --check --compact", "jira-cli update --dry-run --compact", "jira-cli update --confirm <token> --compact"}},
+		// Lifecycle (self-update): single command, no confirm token. --check and
+		// --dry-run are optional read-only flags.
+		"jira-cli update": {schema: "update_report", examples: []string{"jira-cli update --compact", "jira-cli update --check --compact", "jira-cli update --dry-run --compact"}},
 	}
 }
 

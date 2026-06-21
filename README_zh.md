@@ -74,8 +74,8 @@ README 只做地图，不做完整手册。Agent 在执行任务命令前，应�
 3. 运行 `jira-cli context --compact` 和 `jira-cli doctor --compact`。
 4. 运行 `jira-cli reference --compact`，按实时契约选择命令，不从 `--help` 抓取参数。
 5. JSON 输出优先使用 `--compact` 和 `--fields` 降低 token 消耗。
-6. 写入/更新命令先跑 `--dry-run`，检查 preview 和 `confirm_token`，再用同一操作加 `--confirm <confirm_token>` 执行。
-7. 更新成功后，先查看 `signature_status` 和 checksum 校验状态，确认 `skill_sync_status` 成功，再运行 `jira-cli changelog --since <previous-version> --compact` 和 `jira-cli reference --compact` 后继续。
+6. Jira 数据写入命令先跑 `--dry-run`，检查 preview 和 `confirm_token`，再用同一操作加 `--confirm <confirm_token>` 执行。自更新例外：直接 `jira-cli update` 一次调用完成整个更新（无需 confirm token；`--check`/`--dry-run` 是可选的只读标志）。
+7. 更新成功后，先查看 `signature_status` 和 checksum 校验状态，确认 `skill_sync_status` 为 `synced`，再运行 `jira-cli changelog --since <previous-version> --compact` 和 `jira-cli reference --compact` 后继续。
 
 ## 机器契约
 

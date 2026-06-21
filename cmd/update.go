@@ -15,11 +15,13 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	pathpkg "path"
 	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/fatecannotbealtered/jira-cli/internal/output"
@@ -68,7 +70,6 @@ func init() {
 	updateCmd.Flags().Bool("check", false, "Check whether an update is available without installing")
 	updateCmd.Flags().String("version", "", "Install a specific release version (for example v1.2.3)")
 	rootCmd.AddCommand(updateCmd)
-	markWrite(updateCmd)
 }
 
 type githubRelease struct {
@@ -105,40 +106,79 @@ type updateResult struct {
 	Notices           []updateNotice `json:"notices,omitempty"`
 }
 
+// Update stages, in execution order. Every update failure/interruption envelope
+// names the stage it failed in so an agent can reason about the post-state.
+const (
+	updateStageDiscover        = "discover"
+	updateStageDownload        = "download"
+	updateStageVerifySignature = "verify_signature"
+	updateStageVerifyChecksum  = "verify_checksum"
+	updateStageReplace         = "replace"
+	updateStageSkillSync       = "skill_sync"
+)
+
+// updateState carries the post-failure invariant: the version actually running
+// now, whether the atomic binary swap committed, and where Skill sync stands.
+// It is threaded through every update failure path so messages can never lie
+// about the tool's real state.
+type updateState struct {
+	stage           string
+	currentVersion  string
+	binaryReplaced  bool
+	skillSyncStatus string
+	skillSyncCmd    string
+}
+
 func runUpdate(cmd *cobra.Command, _ []string) error {
 	checkOnly, _ := cmd.Flags().GetBool("check")
 	targetVersion, _ := cmd.Flags().GetString("version")
 	requestedSpecific := strings.TrimSpace(targetVersion) != ""
 
-	release, err := fetchUpdateRelease(cmd.Context(), targetVersion)
+	currentVersion := version
+	// st tracks the honest post-state at all times; it starts before the swap.
+	st := &updateState{
+		stage:           updateStageDiscover,
+		currentVersion:  normalizeVersion(currentVersion),
+		binaryReplaced:  false,
+		skillSyncStatus: "not_run",
+		skillSyncCmd:    updateSkillSyncCommand(),
+	}
+
+	// SIGINT/SIGTERM trap: an interrupted self-update must still hand the agent a
+	// parseable terminal envelope (E_INTERRUPTED, exit 130), never die as a bare
+	// killed process. The staged-work invariant makes the message honest. Temp
+	// dirs are always cleaned by their own defers as the stack unwinds.
+	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	release, err := fetchUpdateRelease(ctx, targetVersion)
 	if err != nil {
-		return handleUpdateError(err, ExitNetwork)
+		return handleUpdateError(ctx, err, classifyDiscoverError(err), st)
 	}
 	latestVersion := normalizeVersion(release.TagName)
 	if latestVersion == "" {
-		return handleUpdateError(fmt.Errorf("release is missing tag_name"), ExitNetwork)
+		return handleUpdateError(ctx, fmt.Errorf("release is missing tag_name"), output.ErrNetwork, st)
 	}
 
 	platform, arch, err := updatePlatform(updateGOOS(), updateGOARCH())
 	if err != nil {
-		return handleUpdateError(err, ExitBadArgs)
+		return handleUpdateError(ctx, err, output.ErrValidation, st)
 	}
 	archiveName := updateArchiveName(latestVersion, platform, arch)
 	archiveAsset, ok := release.assetByName(archiveName)
 	if !ok {
-		return handleUpdateError(fmt.Errorf("release %s has no asset for %s-%s (%s)", release.TagName, platform, arch, archiveName), ExitBadArgs)
+		return handleUpdateError(ctx, fmt.Errorf("release %s has no asset for %s-%s (%s)", release.TagName, platform, arch, archiveName), output.ErrValidation, st)
 	}
 	checksumAsset, ok := release.assetByName("checksums.txt")
 	if !ok {
-		return handleUpdateError(fmt.Errorf("release %s has no checksums.txt asset", release.TagName), ExitNetwork)
+		return handleUpdateError(ctx, fmt.Errorf("release %s has no checksums.txt asset", release.TagName), output.ErrNetwork, st)
 	}
 	signatureBundleAsset, signatureBundleFound := release.assetByName("checksums.txt.sigstore.json")
 
-	currentVersion := version
 	available := updateAvailable(currentVersion, latestVersion)
 	exePath, err := updateExecutable()
 	if err != nil {
-		return handleUpdateError(fmt.Errorf("locating current executable: %w", err), ExitBadArgs)
+		return handleUpdateError(ctx, fmt.Errorf("locating current executable: %w", err), output.ErrValidation, st)
 	}
 	if resolved, err := filepath.EvalSymlinks(exePath); err == nil {
 		exePath = resolved
@@ -174,51 +214,63 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 		return SilentErr(ExitBadArgs)
 	}
 	if !available && !requestedSpecific && !forceMode {
+		// Idempotent no-op: already on the latest (or requested) version.
 		printUpdateResult(result)
 		return nil
 	}
 	if dryRun {
+		// Read-only preview only: no confirm token, no expires_at — update is a
+		// single command, not a confirm-gated write.
 		result.DryRun = true
 		printUpdateDryRunResult(result)
 		return nil
 	}
-	if !forceMode {
-		if confirmToken == "" {
-			output.PrintErrorJSONWithCode("update requires --confirm token; run with --dry-run first", 0, output.ErrConfirmRequired)
-			return SilentErr(ExitConfirmRequired)
-		}
-		if err := validateConfirmToken("update jira-cli", updateConfirmDetail(result), confirmToken, time.Now().UTC()); err != nil {
-			output.PrintErrorJSONWithCode(err.Error(), 0, output.ErrConflict)
-			return SilentErr(ExitConflict)
-		}
+
+	st.stage = updateStageDownload
+	archiveData, err := downloadUpdateURL(ctx, archiveAsset.BrowserDownloadURL, maxArchiveBytes)
+	if err != nil {
+		return handleUpdateError(ctx, err, classifyDiscoverError(err), st)
+	}
+	checksumData, err := downloadUpdateURL(ctx, checksumAsset.BrowserDownloadURL, maxChecksumFileBytes)
+	if err != nil {
+		return handleUpdateError(ctx, err, classifyDiscoverError(err), st)
 	}
 
-	archiveData, err := downloadUpdateURL(cmd.Context(), archiveAsset.BrowserDownloadURL, maxArchiveBytes)
-	if err != nil {
-		return handleUpdateError(err, ExitNetwork)
-	}
-	checksumData, err := downloadUpdateURL(cmd.Context(), checksumAsset.BrowserDownloadURL, maxChecksumFileBytes)
-	if err != nil {
-		return handleUpdateError(err, ExitNetwork)
-	}
-	signatureStatus, err := verifyChecksumSignature(cmd.Context(), checksumData, signatureBundleAsset, signatureBundleFound)
+	st.stage = updateStageVerifySignature
+	signatureStatus, err := verifyChecksumSignature(ctx, checksumData, signatureBundleAsset, signatureBundleFound)
 	if err != nil {
 		// Integrity failure is non-retryable: a missing or invalid signature is
 		// a supply-chain red flag, not a transient blip an agent should retry.
-		return handleUpdateError(fmt.Errorf("verifying release signature: %w", err), ExitGeneric)
+		return handleUpdateError(ctx, fmt.Errorf("verifying release signature: %w", err), output.ErrIntegrity, st)
 	}
+
+	st.stage = updateStageVerifyChecksum
 	if err := verifyArchiveChecksum(archiveName, archiveData, checksumData); err != nil {
-		return handleUpdateError(err, ExitGeneric)
+		return handleUpdateError(ctx, err, output.ErrIntegrity, st)
 	}
 	binaryData, err := extractBinaryFromArchive(archiveName, archiveData, binaryNameForPlatform(platform))
 	if err != nil {
-		return handleUpdateError(err, ExitNetwork)
+		return handleUpdateError(ctx, err, output.ErrIntegrity, st)
 	}
+
+	st.stage = updateStageReplace
 	if err := replaceExecutable(exePath, binaryData); err != nil {
-		return handleUpdateError(err, ExitBadArgs)
+		// Local filesystem/permission failure — the atomic swap did not commit,
+		// so the old binary is intact. Classify by next action (permission vs IO),
+		// NOT as a network blip.
+		return handleUpdateError(ctx, err, classifyReplaceError(err), st)
 	}
-	if err := updateSkillSync(cmd.Context(), updateSkillRepo); err != nil {
-		return handleUpdateError(fmt.Errorf("syncing skill directory: %w", err), ExitNetwork)
+	// Atomic swap committed: the tool is now on the new version.
+	st.binaryReplaced = true
+	st.currentVersion = latestVersion
+
+	st.stage = updateStageSkillSync
+	if err := updateSkillSync(ctx, updateSkillRepo); err != nil {
+		// Post-swap: the binary already updated. This is partial success, not a
+		// hard failure — tell the agent it is on the new binary and just needs to
+		// run skill_sync_command.
+		st.skillSyncStatus = "failed"
+		return handleSkillSyncPartial(ctx, currentVersion, latestVersion, signatureStatus, err, st)
 	}
 
 	result.Installed = true
@@ -233,25 +285,111 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-func handleUpdateError(err error, code int) error {
+// updateFailureDetails renders the staged-failure envelope fields every update
+// error (and the interrupt path) must carry.
+func (st *updateState) details() map[string]any {
+	return map[string]any{
+		"stage":             st.stage,
+		"current_version":   st.currentVersion,
+		"binary_replaced":   st.binaryReplaced,
+		"skill_sync_status": st.skillSyncStatus,
+	}
+}
+
+// handleUpdateError emits the staged-failure envelope. If the context was
+// cancelled by a trapped signal, it is reclassified as E_INTERRUPTED (exit 130)
+// so the agent receives a parseable terminal state rather than a killed process.
+func handleUpdateError(ctx context.Context, err error, code output.ErrorCode, st *updateState) error {
+	if interrupted(ctx) {
+		return emitInterrupted(st)
+	}
 	if jsonMode {
-		output.PrintErrorJSONWithCode(err.Error(), 0, updateErrorCode(code))
+		output.PrintErrorJSONWithDetails(err.Error(), 0, code, st.details())
 	} else {
 		output.Error(err.Error())
 	}
-	return SilentErr(code)
+	return SilentErr(exitForUpdateCode(code))
 }
 
-func updateErrorCode(exitCode int) output.ErrorCode {
-	switch exitCode {
-	case ExitBadArgs:
-		return output.ErrValidation
-	case ExitNetwork:
-		return output.ErrNetwork
-	case ExitGeneric:
-		return output.ErrIntegrity
+// handleSkillSyncPartial reports the post-swap Skill-sync failure as partial
+// success: ok:false but binary_replaced:true, retryable, with the command the
+// agent must run to finish.
+func handleSkillSyncPartial(ctx context.Context, prev, latest, signatureStatus string, syncErr error, st *updateState) error {
+	if interrupted(ctx) {
+		return emitInterrupted(st)
+	}
+	msg := fmt.Sprintf("binary updated to %s but skill sync failed: %v; run %q, then \"jira-cli changelog --since %s\"",
+		latest, syncErr, st.skillSyncCmd, normalizeVersion(prev))
+	if jsonMode {
+		details := st.details()
+		details["binary_replaced"] = true
+		details["skill_sync_command"] = st.skillSyncCmd
+		details["previous_version"] = normalizeVersion(prev)
+		details["signature_status"] = signatureStatus
+		output.PrintErrorJSONWithDetails(msg, 0, output.ErrNetwork, details)
+	} else {
+		output.Error(msg)
+	}
+	return SilentErr(ExitNetwork)
+}
+
+func interrupted(ctx context.Context) bool {
+	return ctx != nil && errors.Is(ctx.Err(), context.Canceled)
+}
+
+// emitInterrupted writes the terminal E_INTERRUPTED envelope (exit 130). The
+// message states the real post-state per the stage invariant.
+func emitInterrupted(st *updateState) error {
+	var msg string
+	switch {
+	case st.binaryReplaced:
+		msg = fmt.Sprintf("update interrupted during skill sync; binary is at %s, run %q to finish", st.currentVersion, st.skillSyncCmd)
 	default:
-		return output.ErrUnknown
+		msg = fmt.Sprintf("update cancelled; no change, still on %s", st.currentVersion)
+	}
+	if jsonMode {
+		output.PrintErrorJSONWithDetails(msg, 0, output.ErrInterrupted, st.details())
+	} else {
+		output.Error(msg)
+	}
+	return SilentErr(ExitInterrupted)
+}
+
+// classifyDiscoverError maps a discover/download transport failure onto the
+// retryable network taxonomy.
+func classifyDiscoverError(err error) output.ErrorCode {
+	if err != nil && errors.Is(err, context.DeadlineExceeded) {
+		return output.ErrTimeout
+	}
+	return output.ErrNetwork
+}
+
+// classifyReplaceError maps a local replace-stage failure to E_FORBIDDEN
+// (permission) or E_IO (disk/io). These were historically misclassified as
+// E_NETWORK; the binary swap is a local filesystem operation.
+func classifyReplaceError(err error) output.ErrorCode {
+	if err != nil && errors.Is(err, os.ErrPermission) {
+		return output.ErrForbidden
+	}
+	return output.ErrIO
+}
+
+func exitForUpdateCode(code output.ErrorCode) int {
+	switch code {
+	case output.ErrValidation:
+		return ExitBadArgs
+	case output.ErrForbidden:
+		return ExitForbidden
+	case output.ErrNetwork, output.ErrRateLimit, output.ErrServer:
+		return ExitNetwork
+	case output.ErrTimeout:
+		return ExitTimeout
+	case output.ErrIntegrity, output.ErrIO:
+		return ExitGeneric
+	case output.ErrInterrupted:
+		return ExitInterrupted
+	default:
+		return ExitGeneric
 	}
 }
 
@@ -305,7 +443,8 @@ func printUpdateResult(result updateResult) {
 
 func printUpdateDryRunResult(result updateResult) {
 	if jsonMode {
-		expiresAt := time.Now().UTC().Add(15 * time.Minute)
+		// Read-only preview of the plan. Issues NO confirm_token and NO
+		// expires_at: update is a single command, never a confirm-gated write.
 		output.PrintJSON(map[string]any{
 			"preview": map[string]any{
 				"action": "update jira-cli",
@@ -315,23 +454,10 @@ func printUpdateDryRunResult(result updateResult) {
 				},
 				"result": result,
 			},
-			"confirm_token": generateConfirmToken("update jira-cli", updateConfirmDetail(result), expiresAt),
-			"expires_at":    expiresAt.Format(time.RFC3339),
 		})
 		return
 	}
 	printUpdateResult(result)
-}
-
-func updateConfirmDetail(result updateResult) map[string]any {
-	return map[string]any{
-		"currentVersion":   result.CurrentVersion,
-		"latestVersion":    result.LatestVersion,
-		"requestedVersion": result.RequestedVersion,
-		"asset":            result.Asset,
-		"path":             result.Path,
-		"skillSyncCommand": result.SkillSyncCommand,
-	}
 }
 
 func updateSkillSyncCommand() string {

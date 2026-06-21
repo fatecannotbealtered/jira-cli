@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/fatecannotbealtered/jira-cli/internal/output"
 )
 
 func resetUpdateState(t *testing.T) {
@@ -155,7 +157,9 @@ func TestUpdateInstallsRelease(t *testing.T) {
 	}
 	updateExecutable = func() (string, error) { return exePath, nil }
 
-	stdout, _ := runRootOK(t, "--json", "--force", "update", "--version", "1.2.3")
+	// Bare `update` (no --confirm token, no --force) performs the whole update in
+	// one call: the confirm gate has been removed from update.
+	stdout, _ := runRootOK(t, "--json", "update")
 	got, err := os.ReadFile(exePath)
 	if err != nil {
 		t.Fatalf("read updated binary: %v", err)
@@ -166,6 +170,12 @@ func TestUpdateInstallsRelease(t *testing.T) {
 	var result updateResult
 	decodeEnvelopeData(t, stdout, &result)
 	if !result.Installed || !result.ChecksumVerified || result.LatestVersion != "1.2.3" {
+		t.Fatalf("result=%+v", result)
+	}
+	if result.SignatureStatus != "verified" || !result.SignatureVerified {
+		t.Fatalf("signature not verified: %+v", result)
+	}
+	if result.SkillSyncStatus != "synced" || result.PreviousVersion != "1.0.0" {
 		t.Fatalf("result=%+v", result)
 	}
 }
@@ -232,10 +242,16 @@ func decodeUpdateDryRunResult(t *testing.T, stdout string) updateResult {
 			Result updateResult `json:"result"`
 		} `json:"preview"`
 		ConfirmToken string `json:"confirm_token"`
+		ExpiresAt    string `json:"expires_at"`
 	}
 	decodeEnvelopeData(t, stdout, &data)
-	if data.ConfirmToken == "" {
-		t.Fatalf("missing confirm_token in %s", stdout)
+	// update --dry-run is a read-only preview, not a confirm gate: it must issue
+	// NO confirm_token and NO expires_at.
+	if data.ConfirmToken != "" {
+		t.Fatalf("dry-run must not issue a confirm_token, got %q in %s", data.ConfirmToken, stdout)
+	}
+	if data.ExpiresAt != "" {
+		t.Fatalf("dry-run must not issue expires_at, got %q in %s", data.ExpiresAt, stdout)
 	}
 	return data.Preview.Result
 }
@@ -275,6 +291,147 @@ func TestManagerUpdateCommandVersionFormats(t *testing.T) {
 	}
 	if got := managerUpdateCommand("go", "1.2.3"); got != "go install github.com/"+updateRepo+"/cmd/jira-cli@v1.2.3" {
 		t.Fatalf("go command = %q", got)
+	}
+}
+
+func TestUpdateIdempotentNoOp(t *testing.T) {
+	resetCLIState(t)
+	resetUpdateState(t)
+	version = "1.2.3"
+	archive := makeUpdateZip(t, "jira-cli.exe", []byte("same-binary"))
+	newUpdateTestServer(t, "1.2.3", archive)
+
+	dir := t.TempDir()
+	exePath := filepath.Join(dir, "jira-cli.exe")
+	if err := os.WriteFile(exePath, []byte("current-binary"), 0o755); err != nil {
+		t.Fatalf("write current binary: %v", err)
+	}
+	updateExecutable = func() (string, error) { return exePath, nil }
+
+	// Already at latest: bare update is a no-op success, binary untouched.
+	stdout, _ := runRootOK(t, "--json", "update")
+	got, err := os.ReadFile(exePath)
+	if err != nil {
+		t.Fatalf("read binary: %v", err)
+	}
+	if string(got) != "current-binary" {
+		t.Fatalf("no-op update changed binary to %q", got)
+	}
+	var result updateResult
+	decodeEnvelopeData(t, stdout, &result)
+	if result.Installed || result.UpdateAvailable {
+		t.Fatalf("expected no-op, got %+v", result)
+	}
+}
+
+func TestUpdateIntegrityFailureNonRetryable(t *testing.T) {
+	resetCLIState(t)
+	resetUpdateState(t)
+	archive := makeUpdateZip(t, "jira-cli.exe", []byte("new-binary"))
+	newUpdateTestServer(t, "1.2.3", archive)
+
+	dir := t.TempDir()
+	exePath := filepath.Join(dir, "jira-cli.exe")
+	if err := os.WriteFile(exePath, []byte("old-binary"), 0o755); err != nil {
+		t.Fatalf("write old binary: %v", err)
+	}
+	updateExecutable = func() (string, error) { return exePath, nil }
+	updateVerifySignature = func(_, _, _ string) error { return errors.New("certificate identity mismatch") }
+
+	stdout, _ := runRootExpectSilent(t, ExitGeneric, "--json", "update")
+	errObj := decodeEnvelopeError(t, stdout)
+	if errObj["code"] != string(output.ErrIntegrity) {
+		t.Fatalf("code=%v want E_INTEGRITY", errObj["code"])
+	}
+	if errObj["retryable"] != false {
+		t.Fatalf("integrity failure must be non-retryable, got %v", errObj["retryable"])
+	}
+	details, _ := errObj["details"].(map[string]any)
+	if details["stage"] != updateStageVerifySignature {
+		t.Fatalf("stage=%v want verify_signature", details["stage"])
+	}
+	if details["binary_replaced"] != false {
+		t.Fatalf("binary_replaced=%v want false", details["binary_replaced"])
+	}
+	// Binary must be untouched after an integrity failure.
+	if got, _ := os.ReadFile(exePath); string(got) != "old-binary" {
+		t.Fatalf("integrity failure changed binary to %q", got)
+	}
+}
+
+func TestUpdateSkillSyncFailureIsPartialSuccess(t *testing.T) {
+	resetCLIState(t)
+	resetUpdateState(t)
+	archive := makeUpdateZip(t, "jira-cli.exe", []byte("new-binary"))
+	newUpdateTestServer(t, "1.2.3", archive)
+
+	dir := t.TempDir()
+	exePath := filepath.Join(dir, "jira-cli.exe")
+	if err := os.WriteFile(exePath, []byte("old-binary"), 0o755); err != nil {
+		t.Fatalf("write old binary: %v", err)
+	}
+	updateExecutable = func() (string, error) { return exePath, nil }
+	updateSkillSync = func(context.Context, string) error { return errors.New("npx not found") }
+
+	stdout, _ := runRootExpectSilent(t, ExitNetwork, "--json", "update")
+	errObj := decodeEnvelopeError(t, stdout)
+	if errObj["retryable"] != true {
+		t.Fatalf("skill_sync failure must be retryable, got %v", errObj["retryable"])
+	}
+	details, _ := errObj["details"].(map[string]any)
+	if details["stage"] != updateStageSkillSync {
+		t.Fatalf("stage=%v want skill_sync", details["stage"])
+	}
+	if details["binary_replaced"] != true {
+		t.Fatalf("binary_replaced=%v want true (binary already swapped)", details["binary_replaced"])
+	}
+	if details["skill_sync_status"] != "failed" {
+		t.Fatalf("skill_sync_status=%v want failed", details["skill_sync_status"])
+	}
+	if details["skill_sync_command"] != updateSkillSyncCommand() {
+		t.Fatalf("missing skill_sync_command, got %v", details["skill_sync_command"])
+	}
+	// Binary WAS replaced.
+	if got, _ := os.ReadFile(exePath); string(got) != "new-binary" {
+		t.Fatalf("binary=%q want new-binary", got)
+	}
+}
+
+func TestUpdateErrorCodeExitMapping(t *testing.T) {
+	cases := []struct {
+		code output.ErrorCode
+		exit int
+	}{
+		{output.ErrNetwork, ExitNetwork},
+		{output.ErrTimeout, ExitTimeout},
+		{output.ErrForbidden, ExitForbidden},
+		{output.ErrIO, ExitGeneric},
+		{output.ErrIntegrity, ExitGeneric},
+		{output.ErrInterrupted, ExitInterrupted},
+		{output.ErrValidation, ExitBadArgs},
+	}
+	for _, tc := range cases {
+		if got := exitForUpdateCode(tc.code); got != tc.exit {
+			t.Fatalf("exitForUpdateCode(%s)=%d want %d", tc.code, got, tc.exit)
+		}
+	}
+	if ExitInterrupted != 130 {
+		t.Fatalf("ExitInterrupted=%d want 130", ExitInterrupted)
+	}
+	if !output.RetryableForErrorCode(output.ErrInterrupted) {
+		t.Fatal("E_INTERRUPTED must be retryable")
+	}
+	if output.RetryableForErrorCode(output.ErrIO) {
+		t.Fatal("E_IO must be non-retryable")
+	}
+}
+
+func TestClassifyReplaceError(t *testing.T) {
+	if got := classifyReplaceError(os.ErrPermission); got != output.ErrForbidden {
+		t.Fatalf("permission -> %s want E_FORBIDDEN", got)
+	}
+	if got := classifyReplaceError(errors.New("disk full")); got != output.ErrIO {
+		t.Fatalf("io -> %s want E_IO", got)
 	}
 }
 

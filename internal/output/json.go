@@ -93,6 +93,8 @@ const (
 	ErrConflict        ErrorCode = "E_CONFLICT"
 	ErrTimeout         ErrorCode = "E_TIMEOUT"
 	ErrIntegrity       ErrorCode = "E_INTEGRITY"
+	ErrIO              ErrorCode = "E_IO"
+	ErrInterrupted     ErrorCode = "E_INTERRUPTED"
 	ErrUnknown         ErrorCode = "E_UNKNOWN"
 )
 
@@ -124,7 +126,7 @@ func ErrorCodeFromStatus(statusCode int) ErrorCode {
 
 func RetryableForErrorCode(code ErrorCode) bool {
 	switch code {
-	case ErrRateLimit, ErrServer, ErrNetwork, ErrTimeout:
+	case ErrRateLimit, ErrServer, ErrNetwork, ErrTimeout, ErrInterrupted:
 		return true
 	default:
 		return false
@@ -158,6 +160,10 @@ func HintForErrorCode(code ErrorCode) string {
 		return "Retry with backoff; increase timeout if the command supports it"
 	case ErrIntegrity:
 		return "Release integrity verification failed (signature or checksum); do not retry. Re-run update to fetch the current release, or report a possible supply-chain issue"
+	case ErrIO:
+		return "Local filesystem failure (disk full, file locked, or partial write); fix the environment, then re-run"
+	case ErrInterrupted:
+		return "Operation cancelled by signal; staged work left nothing half-applied. Re-run when ready"
 	default:
 		return ""
 	}
@@ -174,7 +180,17 @@ func PrintErrorJSON(msg string, statusCode int) {
 
 // PrintErrorJSONWithCode outputs an error envelope with an explicit error code.
 func PrintErrorJSONWithCode(msg string, statusCode int, code ErrorCode) {
+	PrintErrorJSONWithDetails(msg, statusCode, code, nil)
+}
+
+// PrintErrorJSONWithDetails outputs an error envelope with an explicit error
+// code and caller-supplied structured details merged in (e.g. the update
+// failure envelope's stage/current_version/binary_replaced/skill_sync_status).
+func PrintErrorJSONWithDetails(msg string, statusCode int, code ErrorCode, extra map[string]any) {
 	details := map[string]any{}
+	for k, v := range extra {
+		details[k] = v
+	}
 	if statusCode != 0 {
 		details["status_code"] = statusCode
 	}

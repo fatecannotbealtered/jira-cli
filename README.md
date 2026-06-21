@@ -74,8 +74,8 @@ The README is intentionally a map, not the full manual. Agents should call `jira
 3. Run `jira-cli context --compact` and `jira-cli doctor --compact`.
 4. Run `jira-cli reference --compact` and select commands from the live contract, not from `--help` scraping.
 5. Prefer `--compact` and `--fields` on JSON outputs to reduce token use.
-6. For write/update commands, run `--dry-run`, inspect the returned preview and `confirm_token`, then repeat the same operation with `--confirm <confirm_token>`.
-7. After a successful update, review `signature_status` and checksum verification, ensure `skill_sync_status` is successful, then run `jira-cli changelog --since <previous-version> --compact` and `jira-cli reference --compact` before continuing.
+6. For Jira-data write commands, run `--dry-run`, inspect the returned preview and `confirm_token`, then repeat the same operation with `--confirm <confirm_token>`. Self-update is exempt: a bare `jira-cli update` performs the whole update in one call (no confirm token; `--check`/`--dry-run` are optional read-only flags).
+7. After a successful update, review `signature_status` and checksum verification, ensure `skill_sync_status` is `synced`, then run `jira-cli changelog --since <previous-version> --compact` and `jira-cli reference --compact` before continuing.
 
 ## Machine Contract
 

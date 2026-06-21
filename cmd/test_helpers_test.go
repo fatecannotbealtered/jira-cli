@@ -267,7 +267,7 @@ func commandTokens(args []string) []string {
 func tokensAreWriteCommand(tokens []string) bool {
 	if len(tokens) == 1 {
 		switch tokens[0] {
-		case "login", "logout", "update":
+		case "login", "logout":
 			return true
 		}
 	}

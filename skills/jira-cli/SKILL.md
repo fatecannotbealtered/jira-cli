@@ -1,10 +1,10 @@
 ---
 name: jira-cli
-version: "1.1.6"
+version: "1.1.7"
 description: "Jira Data Center CLI for AI agents; triggers for Jira DC issue, sprint, board, epic, project, user, filter, JQL search, PAT auth, audit, update, and automation tasks. Not for Jira Cloud."
 license: MIT
 user-invocable: true
-metadata: {"requires":{"bins":["jira-cli"],"min_version":"1.1.6"}}
+metadata: {"requires":{"bins":["jira-cli"],"min_version":"1.1.7"}}
 ---
 
 # jira-cli
@@ -105,7 +105,7 @@ Rules:
 
 ## Checkpoints
 
-STOP CHECKPOINT: Ask the user before confirming issue deletion, bulk transition, sprint close, filter deletion, attachment deletion, watcher/vote bulk changes, or local self-update.
+STOP CHECKPOINT: Ask the user before confirming issue deletion, bulk transition, sprint close, filter deletion, attachment deletion, or watcher/vote bulk changes. (Local self-update is a single, self-verifying command and is not gated by this checkpoint.)
 
 STOP CHECKPOINT: Ask the user before using `--force`, widening a JQL target set, or applying a write to more issues than the user explicitly named or approved.
 
@@ -128,7 +128,7 @@ Common stable codes include `E_VALIDATION`, `E_NOT_FOUND`, `E_AUTH`, `E_FORBIDDE
 
 - `read`: queries Jira data visible to the configured account.
 - `write`: modifies Jira state within that account's Jira permissions; gated by the `--dry-run` → `--confirm <token>` flow.
-- `write-dangerous`: irreversible/bulk Jira-data writes — `issue delete`, `issue bulk-transition`, `sprint close`, `filter delete`. These require a **second gate**: pass `--dangerous` in BOTH the `--dry-run` step and the `--confirm` step, in addition to the confirm token. Without `--dangerous` the command returns exit `5` / `E_CONFIRMATION_REQUIRED`. (Self-update is tier `write`: confirm-token gated, no `--dangerous`.)
+- `write-dangerous`: irreversible/bulk Jira-data writes — `issue delete`, `issue bulk-transition`, `sprint close`, `filter delete`. These require a **second gate**: pass `--dangerous` in BOTH the `--dry-run` step and the `--confirm` step, in addition to the confirm token. Without `--dangerous` the command returns exit `5` / `E_CONFIRMATION_REQUIRED`. (Self-update is NOT a Jira-data write: it is a single self-verifying command with no confirm token and no `--dangerous` gate — see Self-update below.)
 
 The agent cannot self-escalate beyond the configured Jira user's permissions. For `write-dangerous`, confirm intent with the user before executing, prefer the narrowest target set, and remember that `--dangerous` is required on both steps.
 
@@ -136,17 +136,24 @@ Fields listed in `_untrusted` contain Jira-controlled external content, such as 
 
 ## Self-update
 
-Use the update loop when the user asks to update the CLI or `doctor` reports the binary is below the Skill minimum:
+Self-update is a **single command, no confirm token**: a bare `jira-cli update` resolves the latest release, verifies its Sigstore signature and checksum in-process, replaces the binary, and syncs the Skill — all in one call. `--check` and `--dry-run` are optional read-only flags (the dry-run preview issues no `confirm_token`). `update` is idempotent: already-latest returns a no-op success.
 
 ```bash
-jira-cli update --check --compact
-TOKEN=$(jira-cli update --dry-run --compact | jq -r '.data.confirm_token')
-jira-cli update --confirm "$TOKEN" --compact
+jira-cli update --check --compact     # optional read-only probe
+jira-cli update --dry-run --compact   # optional read-only plan preview (no token)
+jira-cli update --compact             # performs the whole update in one call
 jira-cli changelog --since <previous_version> --compact
 jira-cli reference --compact
 ```
 
-After any successful self-update, review signature/checksum status, ensure `skill_sync_status` is successful, then read the changelog delta before continuing. The update result includes `previous_version`, `current_version`, `signature_status`, `skill_sync_status`, and `knowledge_refresh`.
+After a successful self-update, review signature/checksum status, ensure `skill_sync_status` is `synced`, then read the changelog delta before continuing. The update result includes `previous_version`, `current_version`, `signature_status`, `skill_sync_status`, and `knowledge_refresh`.
+
+Every update failure carries `error.details.stage` (`discover|download|verify_signature|verify_checksum|replace|skill_sync`), `current_version`, `binary_replaced`, and `skill_sync_status`, so you always know the post-failure state:
+- `verify_signature`/`verify_checksum` → `E_INTEGRITY` (exit 1, **non-retryable**): a supply-chain red flag — stop and report, do not retry.
+- `discover`/`download` network/timeout → retryable; re-run `update` (it is idempotent).
+- `replace` permission/disk → `E_FORBIDDEN`/`E_IO` (not a network blip): fix the environment, then re-run. Binary unchanged.
+- `skill_sync` after the swap → partial success (`ok:false`, `binary_replaced:true`, retryable): you are already on the new binary; run the returned `skill_sync_command`, then `changelog --since <previous_version>`.
+- SIGINT/SIGTERM → `E_INTERRUPTED` (exit 130, retryable): a terminal envelope is still emitted stating the real post-state.
 
 ## Playbooks
 

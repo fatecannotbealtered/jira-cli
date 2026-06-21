@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.7] - 2026-06-21
+
+### Changed
+
+- `update` is now a single self-update command with no confirm-token gate: a bare `jira-cli update` resolves the latest (or `--version`) release, verifies its integrity, replaces the binary, and syncs the Skill in one call. The previous `--dry-run` → `--confirm <token>` write gate has been removed from `update` only (data-write commands are unchanged). `--check` and `--dry-run` remain optional read-only flags, and `update --dry-run` no longer issues a `confirm_token` or `expires_at`. `update` is idempotent: already-latest returns a no-op success.
+
+### Added
+
+- Staged update failure/interruption envelope: every `update` failure now carries `stage` (`discover|download|verify_signature|verify_checksum|replace|skill_sync`), `current_version`, `binary_replaced`, and `skill_sync_status` in `error.details`, so an agent can always reason about the post-failure state.
+- New error codes `E_IO` (exit 1, non-retryable) and `E_INTERRUPTED` (exit 130, retryable). SIGINT/SIGTERM during `update` is trapped: the temp dir is cleaned and a terminal `E_INTERRUPTED` envelope is still emitted on stdout, never a bare killed process.
+
+### Fixed
+
+- `update` replace-stage local failures (permission, disk full, file locked, partial write) are now classified as `E_FORBIDDEN`/`E_IO` instead of `E_NETWORK`, so an agent does not retry a problem that needs an environment fix.
+- A post-swap Skill-sync failure is now reported as partial success (`ok:false`, `binary_replaced:true`, retryable, with `skill_sync_command`) instead of a hard `E_NETWORK`, so the agent knows it is already on the new binary and only needs to finish the Skill sync.
+
 ## [1.1.6] - 2026-06-16
 
 ### Fixed

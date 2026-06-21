@@ -30,10 +30,12 @@ const (
 	ExitConflict        = 6
 	ExitRetryable       = 7
 	ExitTimeout         = 8
+	ExitInterrupted     = 130
 
 	ExitForbidden = ExitAuth
 	ExitRateLimit = ExitRetryable
 	ExitNetwork   = ExitRetryable
+	ExitIO        = ExitGeneric
 )
 
 // ErrSilent indicates the error has been printed; cobra should not print again.
@@ -77,10 +79,12 @@ var dangerousMode bool
 // dangerousCommandPaths is the single source of truth for which command paths
 // are write-dangerous. Both permissionTier (self-description) and the runtime
 // gate read it, so the advertised tier can never drift from what is enforced.
-// Self-update is intentionally NOT here: it is a confirm-token-gated write that
-// does not mutate Jira data, so it is tier "write", not "write-dangerous". This
-// set is exactly the irreversible/bulk Jira-data operations that route through
-// dryRunOutput, so the runtime gate and the advertised tier stay in lockstep.
+// Self-update is intentionally NOT here: it is a single self-update command (no
+// confirm token, exempt from the §7 write gate; integrity is guaranteed by
+// in-process signature verification), so it is neither "write" nor
+// "write-dangerous". This set is exactly the irreversible/bulk Jira-data
+// operations that route through dryRunOutput, so the runtime gate and the
+// advertised tier stay in lockstep.
 var dangerousCommandPaths = map[string]bool{
 	"jira-cli issue delete":          true,
 	"jira-cli issue bulk-transition": true,
