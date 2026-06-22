@@ -1,10 +1,10 @@
 ---
 name: jira-cli
-version: "1.1.7"
+version: "1.1.8"
 description: "Jira Data Center CLI for AI agents; triggers for Jira DC issue, sprint, board, epic, project, user, filter, JQL search, PAT auth, audit, update, and automation tasks. Not for Jira Cloud."
 license: MIT
 user-invocable: true
-metadata: {"requires":{"bins":["jira-cli"],"min_version":"1.1.7"}}
+metadata: {"requires":{"bins":["jira-cli"],"min_version":"1.1.8"}}
 ---
 
 # jira-cli
@@ -64,6 +64,7 @@ Default output is JSON. In JSON mode:
 - Business payload lives under `.data`.
 - Failures live under `.error` with `code`, `message`, `details`, and `retryable`.
 - `meta.duration_ms` is present for successes and failures.
+- `meta.notices` (optional) carries the cached update-available notice on ANY command, read-only from the local cache (no network call). It is omitted when the cache has nothing to report, and is severity-graded: `warning` when the changelog delta since the running version has a `security` entry or crosses a major version, otherwise `info`. The fresh/active view stays under `context`/`doctor`/`update --check` `data.notices`.
 - Progress, prompts, warnings, and text-mode errors are stderr side-channel content.
 
 Use `--compact` when storing output in context or piping between tools. Use `--format text` only for human-readable display or interactive login.

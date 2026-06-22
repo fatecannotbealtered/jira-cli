@@ -25,12 +25,26 @@ var EnvelopeJSON = true
 // CommandStartTime is set by the CLI root command for duration metadata.
 var CommandStartTime time.Time
 
+// UpdateNoticesProvider, when set, supplies the cached update notices attached
+// to every envelope's meta.notices. It is wired by package cmd to read ONLY the
+// local update-notice cache (no network I/O), breaking what would otherwise be
+// an import cycle between output and cmd. It returns nil when the cache has
+// nothing to report, in which case meta.notices is omitted.
+var UpdateNoticesProvider func() []any
+
 type Envelope struct {
-	OK            bool             `json:"ok"`
-	SchemaVersion string           `json:"schema_version"`
-	Data          any              `json:"data,omitempty"`
-	Error         *EnvelopeError   `json:"error,omitempty"`
-	Meta          map[string]int64 `json:"meta,omitempty"`
+	OK            bool           `json:"ok"`
+	SchemaVersion string         `json:"schema_version"`
+	Data          any            `json:"data,omitempty"`
+	Error         *EnvelopeError `json:"error,omitempty"`
+	Meta          *Meta          `json:"meta,omitempty"`
+}
+
+// Meta carries envelope metadata. duration_ms is always present; notices is the
+// read-only cache view of the update-available notice, omitted when empty.
+type Meta struct {
+	DurationMS int64 `json:"duration_ms"`
+	Notices    []any `json:"notices,omitempty"`
 }
 
 type EnvelopeError struct {
@@ -47,12 +61,18 @@ func marshalForOutput(v any) ([]byte, error) {
 	return jsonMarshalIndent(v, "", "  ")
 }
 
-func durationMeta() map[string]int64 {
+func buildMeta() *Meta {
 	duration := int64(0)
 	if !CommandStartTime.IsZero() {
 		duration = time.Since(CommandStartTime).Milliseconds()
 	}
-	return map[string]int64{"duration_ms": duration}
+	meta := &Meta{DurationMS: duration}
+	if UpdateNoticesProvider != nil {
+		if notices := UpdateNoticesProvider(); len(notices) > 0 {
+			meta.Notices = notices
+		}
+	}
+	return meta
 }
 
 func successEnvelope(v any) Envelope {
@@ -60,7 +80,7 @@ func successEnvelope(v any) Envelope {
 		OK:            true,
 		SchemaVersion: SchemaVersion,
 		Data:          v,
-		Meta:          durationMeta(),
+		Meta:          buildMeta(),
 	}
 }
 
@@ -200,10 +220,11 @@ func PrintErrorJSONWithDetails(msg string, statusCode int, code ErrorCode, extra
 	if len(details) == 0 {
 		details = nil
 	}
+	meta := buildMeta()
 	payload := Envelope{
 		OK:            false,
 		SchemaVersion: SchemaVersion,
-		Meta:          durationMeta(),
+		Meta:          meta,
 		Error: &EnvelopeError{
 			Code:      code,
 			Message:   msg,
@@ -214,7 +235,7 @@ func PrintErrorJSONWithDetails(msg string, statusCode int, code ErrorCode, extra
 	data, err := marshalForOutput(payload)
 	if err != nil {
 		_, _ = fmt.Fprintf(os.Stdout, `{"ok":false,"schema_version":%q,"error":{"code":%q,"message":%q,"retryable":%v},"meta":{"duration_ms":%d}}`+"\n",
-			SchemaVersion, code, msg, RetryableForErrorCode(code), durationMeta()["duration_ms"])
+			SchemaVersion, code, msg, RetryableForErrorCode(code), meta.DurationMS)
 		return
 	}
 	fmt.Println(string(data))

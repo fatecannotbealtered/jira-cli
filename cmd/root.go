@@ -144,6 +144,10 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&confirmToken, "confirm", "", "Confirmation token returned by --dry-run for write commands")
 	installUpdateNoticeHelp(rootCmd)
 
+	// Attach the cached update notice to every command's meta.notices, read-only
+	// from the local cache (no network). Omitted when the cache is empty/expired.
+	output.UpdateNoticesProvider = func() []any { return noticesAsAny(readCachedUpdateNotices()) }
+
 	cobra.OnInitialize(func() {
 		output.Quiet = false
 	})

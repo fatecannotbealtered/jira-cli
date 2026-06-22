@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	jiracli "github.com/fatecannotbealtered/jira-cli"
 	"github.com/spf13/cobra"
 )
 
@@ -94,7 +95,7 @@ func updateNoticesFromValues(current, latest, installMethod, command, source str
 	}
 	notice := updateNotice{
 		Type:               "update_available",
-		Severity:           "info",
+		Severity:           updateNoticeSeverity(current, latest),
 		CurrentVersion:     current,
 		LatestVersion:      latest,
 		UpdateAvailable:    true,
@@ -111,6 +112,45 @@ func updateNoticesFromValues(current, latest, installMethod, command, source str
 	}
 	notice.Message = fmt.Sprintf("jira-cli %s is available (current %s)", latest, current)
 	return []updateNotice{notice}
+}
+
+// updateNoticeSeverity grades the update notice from the embedded CHANGELOG
+// delta between the running version and the latest. It is "warning" when the
+// delta contains a security entry OR the latest crosses a major version;
+// otherwise "info". "critical" is reserved and never emitted here.
+func updateNoticeSeverity(current, latest string) string {
+	return updateNoticeSeverityFromChangelog(current, latest, jiracli.ChangelogMarkdown)
+}
+
+func updateNoticeSeverityFromChangelog(current, latest, markdown string) string {
+	current = normalizeVersion(current)
+	latest = normalizeVersion(latest)
+	if majorVersion(latest) > majorVersion(current) {
+		return "warning"
+	}
+	for _, entry := range parseChangelog(markdown) {
+		if entry.Version == "Unreleased" {
+			continue
+		}
+		// Only entries strictly newer than the running version are in the delta.
+		if current != "" && compareVersions(entry.Version, current) <= 0 {
+			continue
+		}
+		if len(entry.Changes["security"]) > 0 {
+			return "warning"
+		}
+	}
+	return "info"
+}
+
+// majorVersion returns the first semver component, or 0 when unparseable
+// (e.g. "dev"/empty), so a dev->release transition never falsely reports major.
+func majorVersion(v string) int {
+	parts := parseVersionParts(v)
+	if len(parts) == 0 {
+		return 0
+	}
+	return parts[0]
 }
 
 func updateNoticeRecommendedCommand(installMethod, latest string) string {
@@ -202,8 +242,25 @@ func updateNoticeDisabled() bool {
 	return value == "1" || value == "true" || value == "yes"
 }
 
-func updateNoticeAutoDisabled() bool {
+// updateNoticeAutoDisabled reports whether the update-notice cache is inert.
+// It is a var so tests can exercise the cache read/write path, which is
+// otherwise auto-disabled under the `.test` binary.
+var updateNoticeAutoDisabled = func() bool {
 	return updateNoticeDisabled() || strings.HasSuffix(os.Args[0], ".test")
+}
+
+// noticesAsAny converts cached update notices into the generic slice the output
+// envelope attaches to meta.notices. Returns nil when there is nothing to
+// report so the field is omitted.
+func noticesAsAny(notices []updateNotice) []any {
+	if len(notices) == 0 {
+		return nil
+	}
+	out := make([]any, 0, len(notices))
+	for _, notice := range notices {
+		out = append(out, notice)
+	}
+	return out
 }
 
 func printUpdateNoticeHint(w io.Writer, notices []updateNotice) {

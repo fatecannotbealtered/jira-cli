@@ -94,6 +94,55 @@ func TestPrintJSON_MarshalError(t *testing.T) {
 	}
 }
 
+func TestPrintJSON_MetaNotices(t *testing.T) {
+	t.Run("present when provider has notices", func(t *testing.T) {
+		old := UpdateNoticesProvider
+		t.Cleanup(func() { UpdateNoticesProvider = old })
+		UpdateNoticesProvider = func() []any {
+			return []any{map[string]any{"type": "update_available", "severity": "warning"}}
+		}
+		out := captureStdout(t, func() { PrintJSON(map[string]any{"x": 1}) })
+		var payload struct {
+			Meta struct {
+				DurationMS int64            `json:"duration_ms"`
+				Notices    []map[string]any `json:"notices"`
+			} `json:"meta"`
+		}
+		if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &payload); err != nil {
+			t.Fatalf("invalid JSON: %v\nout: %s", err, out)
+		}
+		if len(payload.Meta.Notices) != 1 {
+			t.Fatalf("meta.notices = %v, want 1 notice", payload.Meta.Notices)
+		}
+		if payload.Meta.Notices[0]["severity"] != "warning" {
+			t.Errorf("severity = %v, want warning", payload.Meta.Notices[0]["severity"])
+		}
+	})
+
+	t.Run("absent when provider empty", func(t *testing.T) {
+		old := UpdateNoticesProvider
+		t.Cleanup(func() { UpdateNoticesProvider = old })
+		UpdateNoticesProvider = func() []any { return nil }
+		out := captureStdout(t, func() { PrintJSON(map[string]any{"x": 1}) })
+		if strings.Contains(out, "notices") {
+			t.Errorf("meta.notices should be omitted, got %q", out)
+		}
+		if !strings.Contains(out, "duration_ms") {
+			t.Errorf("meta.duration_ms must always be present, got %q", out)
+		}
+	})
+
+	t.Run("absent when provider nil", func(t *testing.T) {
+		old := UpdateNoticesProvider
+		t.Cleanup(func() { UpdateNoticesProvider = old })
+		UpdateNoticesProvider = nil
+		out := captureStdout(t, func() { PrintJSON(map[string]any{"x": 1}) })
+		if strings.Contains(out, "notices") {
+			t.Errorf("meta.notices should be omitted, got %q", out)
+		}
+	})
+}
+
 func TestPrintErrorJSON(t *testing.T) {
 	t.Run("with status", func(t *testing.T) {
 		out := captureStdout(t, func() {

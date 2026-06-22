@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.8] - 2026-06-22
+
+### Added
+
+- The cached update-available notice is now attached to every command's `meta.notices` (read-only from the local cache, no network call), so an agent sees an available update from any command output. The field is omitted when the cache has nothing to report; the fresh/active view stays under `context`/`doctor`/`update --check` `data.notices`.
+- Update notices are now severity-graded: `warning` when the embedded CHANGELOG delta since the running version contains a `security` entry or the latest crosses a major version, otherwise `info` (`critical` is reserved). The severity is computed at check time and stored in the cache, so the cached `meta.notices` carries the right level.
+
 ## [1.1.7] - 2026-06-21
 
 ### Changed
