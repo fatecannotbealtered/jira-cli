@@ -1,6 +1,6 @@
 {
   "name": "@fateforge/jira-cli",
-  "version": "1.1.9",
+  "version": "1.1.10",
   "description": "Jira Data Center CLI for AI Agents - manage issues, sprints, boards, epics, projects, users, filters, worklogs, links, and attachments",
   "keywords": [
     "jira",
@@ -32,12 +32,12 @@
     "check-version": "node scripts/check-version.js"
   },
   "optionalDependencies": {
-    "@fateforge/jira-cli-darwin-arm64": "1.1.9",
-    "@fateforge/jira-cli-darwin-x64": "1.1.9",
-    "@fateforge/jira-cli-linux-arm64": "1.1.9",
-    "@fateforge/jira-cli-linux-x64": "1.1.9",
-    "@fateforge/jira-cli-win32-arm64": "1.1.9",
-    "@fateforge/jira-cli-win32-x64": "1.1.9"
+    "@fateforge/jira-cli-darwin-arm64": "1.1.10",
+    "@fateforge/jira-cli-darwin-x64": "1.1.10",
+    "@fateforge/jira-cli-linux-arm64": "1.1.10",
+    "@fateforge/jira-cli-linux-x64": "1.1.10",
+    "@fateforge/jira-cli-win32-arm64": "1.1.10",
+    "@fateforge/jira-cli-win32-x64": "1.1.10"
   },
   "files": [
     "scripts/run.js",
