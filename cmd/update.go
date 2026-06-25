@@ -68,8 +68,23 @@ npm install -g @fateforge/jira-cli@latest unless --force is set.`,
 
 func init() {
 	updateCmd.Flags().Bool("check", false, "Check whether an update is available without installing")
-	updateCmd.Flags().String("version", "", "Install a specific release version (for example v1.2.3)")
+	updateCmd.Flags().String("target-version", "", "Install a specific release version (for example v1.2.3)")
+	// --version is kept as a hidden, deprecated alias for --target-version. The
+	// canonical flag is --target-version so the target-release selector is never
+	// confused with the root command's --version (which prints the tool version).
+	updateCmd.Flags().String("version", "", "Deprecated alias for --target-version")
+	_ = updateCmd.Flags().MarkHidden("version")
 	rootCmd.AddCommand(updateCmd)
+}
+
+// updateTargetVersion resolves the requested target release, preferring the
+// canonical --target-version and falling back to the deprecated --version alias.
+func updateTargetVersion(cmd *cobra.Command) string {
+	if v, _ := cmd.Flags().GetString("target-version"); strings.TrimSpace(v) != "" {
+		return v
+	}
+	v, _ := cmd.Flags().GetString("version")
+	return v
 }
 
 type githubRelease struct {
@@ -131,7 +146,7 @@ type updateState struct {
 
 func runUpdate(cmd *cobra.Command, _ []string) error {
 	checkOnly, _ := cmd.Flags().GetBool("check")
-	targetVersion, _ := cmd.Flags().GetString("version")
+	targetVersion := updateTargetVersion(cmd)
 	requestedSpecific := strings.TrimSpace(targetVersion) != ""
 
 	currentVersion := version
@@ -209,6 +224,16 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 		printUpdateResult(result)
 		return nil
 	}
+	if dryRun {
+		// Read-only preview only: no confirm token, no expires_at — update is a
+		// single command, not a confirm-gated write. Placed BEFORE the npm gate so
+		// the preview is always reachable: a package-managed install must still be
+		// able to show what `update` would do without being short-circuited into
+		// the "use your package manager" error.
+		result.DryRun = true
+		printUpdateDryRunResult(result)
+		return nil
+	}
 	if installMethod != "" && !forceMode {
 		printPackageManagerUpdate(result)
 		return SilentErr(ExitBadArgs)
@@ -216,13 +241,6 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 	if !available && !requestedSpecific && !forceMode {
 		// Idempotent no-op: already on the latest (or requested) version.
 		printUpdateResult(result)
-		return nil
-	}
-	if dryRun {
-		// Read-only preview only: no confirm token, no expires_at — update is a
-		// single command, not a confirm-gated write.
-		result.DryRun = true
-		printUpdateDryRunResult(result)
 		return nil
 	}
 
@@ -239,6 +257,16 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 	st.stage = updateStageVerifySignature
 	signatureStatus, err := verifyChecksumSignature(ctx, checksumData, signatureBundleAsset, signatureBundleFound)
 	if err != nil {
+		// Distinguish "could not fetch the signature bundle" from "the signature is
+		// bad". A failed bundle download (5xx / reset / DNS / rate-limit) is a
+		// transient network problem the agent SHOULD retry — not a supply-chain
+		// red flag. Only a present-but-invalid signature (or a deliberately missing
+		// bundle) is the non-retryable E_INTEGRITY case. An interrupt mid-download
+		// still surfaces as E_INTERRUPTED via handleUpdateError's ctx check.
+		var dlErr *signatureDownloadError
+		if errors.As(err, &dlErr) {
+			return handleUpdateError(ctx, fmt.Errorf("downloading release signature: %w", dlErr.err), classifyDiscoverError(dlErr.err), st)
+		}
 		// Integrity failure is non-retryable: a missing or invalid signature is
 		// a supply-chain red flag, not a transient blip an agent should retry.
 		return handleUpdateError(ctx, fmt.Errorf("verifying release signature: %w", err), output.ErrIntegrity, st)
@@ -356,10 +384,21 @@ func emitInterrupted(st *updateState) error {
 }
 
 // classifyDiscoverError maps a discover/download transport failure onto the
-// retryable network taxonomy.
+// retryable network taxonomy. When the upstream returned an HTTP status, it is
+// mapped by status TYPE through the single §6 ErrorCodeFromStatus function
+// (404 -> E_NOT_FOUND, 429 -> E_RATE_LIMITED, 5xx -> E_SERVER, …) rather than
+// collapsing every non-2xx into E_NETWORK. Transport-level failures (DNS,
+// connection reset/refused) have no status and stay E_NETWORK.
 func classifyDiscoverError(err error) output.ErrorCode {
-	if err != nil && errors.Is(err, context.DeadlineExceeded) {
+	if err == nil {
+		return output.ErrNetwork
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
 		return output.ErrTimeout
+	}
+	var statusErr *httpStatusError
+	if errors.As(err, &statusErr) {
+		return output.ErrorCodeFromStatus(statusErr.statusCode)
 	}
 	return output.ErrNetwork
 }
@@ -378,7 +417,9 @@ func exitForUpdateCode(code output.ErrorCode) int {
 	switch code {
 	case output.ErrValidation:
 		return ExitBadArgs
-	case output.ErrForbidden:
+	case output.ErrNotFound:
+		return ExitNotFound
+	case output.ErrAuth, output.ErrForbidden, output.ErrConfig:
 		return ExitForbidden
 	case output.ErrNetwork, output.ErrRateLimit, output.ErrServer:
 		return ExitNetwork
@@ -497,7 +538,10 @@ func verifyChecksumSignature(ctx context.Context, checksumData []byte, bundleAss
 
 	bundleData, err := downloadUpdateURL(ctx, bundleAsset.BrowserDownloadURL, maxSignatureBundleBytes)
 	if err != nil {
-		return "download_failed", fmt.Errorf("downloading checksum signature bundle: %w", err)
+		// A bundle that cannot be fetched is a transient network failure, NOT an
+		// integrity verdict on the release. Tag it so the caller classifies it on
+		// the retryable network taxonomy instead of E_INTEGRITY.
+		return "download_failed", &signatureDownloadError{err: err}
 	}
 	tmpDir, err := os.MkdirTemp("", "jira-cli-signature-*")
 	if err != nil {
@@ -536,6 +580,35 @@ func fetchUpdateRelease(ctx context.Context, targetVersion string) (*githubRelea
 	return &release, nil
 }
 
+// httpStatusError carries the upstream HTTP status so the failure can be mapped
+// onto the §6 status->code taxonomy (404 != 5xx != 429) instead of collapsing
+// every non-2xx into a single class. Transport-level failures (DNS/reset/refused)
+// have no status and surface as plain errors classified by classifyDiscoverError.
+type httpStatusError struct {
+	statusCode int
+	status     string
+	url        string
+	body       string
+}
+
+func (e *httpStatusError) Error() string {
+	msg := e.body
+	if msg == "" {
+		msg = e.status
+	}
+	return fmt.Sprintf("GitHub returned %s: %s", e.status, msg)
+}
+
+// signatureDownloadError marks a failure to FETCH the signature bundle (network
+// transport / HTTP status), as opposed to a signature that was fetched but did
+// not verify. The former is retryable network; the latter is non-retryable
+// E_INTEGRITY. Keeping them distinct stops an agent from looping on E_INTEGRITY
+// when the real problem was a 5xx on the bundle URL.
+type signatureDownloadError struct{ err error }
+
+func (e *signatureDownloadError) Error() string { return e.err.Error() }
+func (e *signatureDownloadError) Unwrap() error { return e.err }
+
 func downloadUpdateURL(ctx context.Context, rawURL string, limit int64) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
@@ -556,11 +629,12 @@ func downloadUpdateURL(ctx context.Context, rawURL string, limit int64) ([]byte,
 		return nil, fmt.Errorf("download from %s exceeded %d bytes", rawURL, limit)
 	}
 	if resp.StatusCode >= 400 {
-		msg := strings.TrimSpace(string(data))
-		if msg == "" {
-			msg = resp.Status
+		return nil, &httpStatusError{
+			statusCode: resp.StatusCode,
+			status:     resp.Status,
+			url:        rawURL,
+			body:       strings.TrimSpace(string(data)),
 		}
-		return nil, fmt.Errorf("GitHub returned %s: %s", resp.Status, msg)
 	}
 	return data, nil
 }

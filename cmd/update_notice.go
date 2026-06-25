@@ -117,7 +117,7 @@ func updateNoticesFromValues(current, latest, installMethod, command, source str
 // updateNoticeSeverity grades the update notice from the embedded CHANGELOG
 // delta between the running version and the latest. It is "warning" when the
 // delta contains a security entry OR the latest crosses a major version;
-// otherwise "info". "critical" is reserved and never emitted here.
+// otherwise "info".
 func updateNoticeSeverity(current, latest string) string {
 	return updateNoticeSeverityFromChangelog(current, latest, jiracli.ChangelogMarkdown)
 }

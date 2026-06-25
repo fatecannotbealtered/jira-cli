@@ -454,3 +454,228 @@ func TestVerifyChecksumSignature_FailClosed(t *testing.T) {
 		t.Fatal("signature verification failure must abort")
 	}
 }
+
+// newUpdateServerBundleStatus serves a valid release whose archive/checksum
+// download succeed, but whose signature bundle URL returns the given HTTP
+// status. It exercises the split between "could not fetch the signature" (a
+// transient network failure) and "the signature did not verify" (E_INTEGRITY).
+func newUpdateServerBundleStatus(t *testing.T, releaseVersion string, archive []byte, bundleStatus int) {
+	t.Helper()
+	archiveName := updateArchiveName(releaseVersion, "windows", "amd64")
+	sum := sha256.Sum256(archive)
+	checksums := hex.EncodeToString(sum[:]) + "  " + archiveName + "\n"
+	var serverURL string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/releases/latest", "/releases/tags/v" + releaseVersion:
+			_, _ = fmt.Fprintf(w, `{"tag_name":"v%s","assets":[{"name":%q,"browser_download_url":%q},{"name":"checksums.txt","browser_download_url":%q},{"name":"checksums.txt.sigstore.json","browser_download_url":%q}]}`,
+				releaseVersion,
+				archiveName,
+				serverURL+"/assets/"+archiveName,
+				serverURL+"/assets/checksums.txt",
+				serverURL+"/assets/checksums.txt.sigstore.json",
+			)
+		case "/assets/" + archiveName:
+			_, _ = w.Write(archive)
+		case "/assets/checksums.txt":
+			_, _ = fmt.Fprint(w, checksums)
+		case "/assets/checksums.txt.sigstore.json":
+			http.Error(w, "bundle unavailable", bundleStatus)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	serverURL = ts.URL
+	t.Cleanup(ts.Close)
+	updateHTTPClient = ts.Client()
+	updateBaseURL = ts.URL
+}
+
+// A 5xx on the signature bundle download is a transient network failure, NOT an
+// integrity verdict: it must surface as retryable E_SERVER (exit 7), not
+// E_INTEGRITY, so an agent re-runs the idempotent update instead of stopping.
+func TestUpdateSignatureBundleDownloadFailureIsRetryable(t *testing.T) {
+	resetCLIState(t)
+	resetUpdateState(t)
+	archive := makeUpdateZip(t, "jira-cli.exe", []byte("new-binary"))
+	newUpdateServerBundleStatus(t, "1.2.3", archive, http.StatusServiceUnavailable)
+
+	dir := t.TempDir()
+	exePath := filepath.Join(dir, "jira-cli.exe")
+	if err := os.WriteFile(exePath, []byte("old-binary"), 0o755); err != nil {
+		t.Fatalf("write old binary: %v", err)
+	}
+	updateExecutable = func() (string, error) { return exePath, nil }
+
+	stdout, _ := runRootExpectSilent(t, ExitNetwork, "--json", "update")
+	errObj := decodeEnvelopeError(t, stdout)
+	if errObj["code"] != string(output.ErrServer) {
+		t.Fatalf("code=%v want E_SERVER (bundle 5xx is transient, not integrity)", errObj["code"])
+	}
+	if errObj["retryable"] != true {
+		t.Fatalf("bundle download failure must be retryable, got %v", errObj["retryable"])
+	}
+	details, _ := errObj["details"].(map[string]any)
+	if details["stage"] != updateStageVerifySignature {
+		t.Fatalf("stage=%v want verify_signature", details["stage"])
+	}
+	if details["binary_replaced"] != false {
+		t.Fatalf("binary_replaced=%v want false", details["binary_replaced"])
+	}
+	if got, _ := os.ReadFile(exePath); string(got) != "old-binary" {
+		t.Fatalf("download failure changed binary to %q", got)
+	}
+}
+
+// A bad signature (bundle fetched, verification fails) stays non-retryable
+// E_INTEGRITY — the split must not reclassify a real integrity failure as
+// network just because it happens in the verify_signature stage.
+func TestUpdateSignatureVerifyFailureStaysIntegrity(t *testing.T) {
+	resetCLIState(t)
+	resetUpdateState(t)
+	archive := makeUpdateZip(t, "jira-cli.exe", []byte("new-binary"))
+	newUpdateTestServer(t, "1.2.3", archive)
+
+	dir := t.TempDir()
+	exePath := filepath.Join(dir, "jira-cli.exe")
+	if err := os.WriteFile(exePath, []byte("old-binary"), 0o755); err != nil {
+		t.Fatalf("write old binary: %v", err)
+	}
+	updateExecutable = func() (string, error) { return exePath, nil }
+	updateVerifySignature = func(_, _, _ string) error { return errors.New("certificate identity mismatch") }
+
+	stdout, _ := runRootExpectSilent(t, ExitGeneric, "--json", "update")
+	errObj := decodeEnvelopeError(t, stdout)
+	if errObj["code"] != string(output.ErrIntegrity) {
+		t.Fatalf("code=%v want E_INTEGRITY", errObj["code"])
+	}
+	if errObj["retryable"] != false {
+		t.Fatalf("integrity failure must be non-retryable, got %v", errObj["retryable"])
+	}
+}
+
+// classifyDiscoverError maps an HTTP status through the single §6 taxonomy
+// function instead of collapsing everything into E_NETWORK.
+func TestClassifyDiscoverErrorByStatus(t *testing.T) {
+	cases := []struct {
+		status int
+		want   output.ErrorCode
+	}{
+		{http.StatusNotFound, output.ErrNotFound},
+		{http.StatusTooManyRequests, output.ErrRateLimit},
+		{http.StatusServiceUnavailable, output.ErrServer},
+		{http.StatusBadGateway, output.ErrServer},
+	}
+	for _, tc := range cases {
+		err := &httpStatusError{statusCode: tc.status, status: http.StatusText(tc.status)}
+		if got := classifyDiscoverError(err); got != tc.want {
+			t.Fatalf("status %d -> %s want %s", tc.status, got, tc.want)
+		}
+	}
+	// Transport-level failure (no status) stays E_NETWORK.
+	if got := classifyDiscoverError(errors.New("dial tcp: connection refused")); got != output.ErrNetwork {
+		t.Fatalf("transport error -> %s want E_NETWORK", got)
+	}
+	// Deadline -> timeout.
+	if got := classifyDiscoverError(context.DeadlineExceeded); got != output.ErrTimeout {
+		t.Fatalf("deadline -> %s want E_TIMEOUT", got)
+	}
+}
+
+// A 404 for a requested --target-version tag must surface as E_NOT_FOUND
+// (exit 3, non-retryable) rather than a generic network error.
+func TestUpdateTargetVersionNotFound(t *testing.T) {
+	resetCLIState(t)
+	resetUpdateState(t)
+	archive := makeUpdateZip(t, "jira-cli.exe", []byte("new-binary"))
+	newUpdateTestServer(t, "1.2.3", archive) // only v1.2.3 exists
+
+	dir := t.TempDir()
+	exePath := filepath.Join(dir, "jira-cli.exe")
+	if err := os.WriteFile(exePath, []byte("old-binary"), 0o755); err != nil {
+		t.Fatalf("write old binary: %v", err)
+	}
+	updateExecutable = func() (string, error) { return exePath, nil }
+
+	stdout, _ := runRootExpectSilent(t, ExitNotFound, "--json", "update", "--target-version", "v9.9.9")
+	errObj := decodeEnvelopeError(t, stdout)
+	if errObj["code"] != string(output.ErrNotFound) {
+		t.Fatalf("code=%v want E_NOT_FOUND", errObj["code"])
+	}
+}
+
+// --target-version is the canonical flag; --version remains a hidden alias.
+func TestUpdateTargetVersionFlagAndAlias(t *testing.T) {
+	resetCLIState(t)
+	resetUpdateState(t)
+	version = "2.0.0"
+	archive := makeUpdateZip(t, "jira-cli.exe", []byte("older-binary"))
+	newUpdateTestServer(t, "1.2.3", archive)
+
+	dir := t.TempDir()
+	exePath := filepath.Join(dir, "jira-cli.exe")
+	if err := os.WriteFile(exePath, []byte("current-binary"), 0o755); err != nil {
+		t.Fatalf("write current binary: %v", err)
+	}
+	updateExecutable = func() (string, error) { return exePath, nil }
+
+	// Canonical flag.
+	stdout, _ := runRootOK(t, "--json", "--dry-run", "update", "--target-version", "v1.2.3")
+	if r := decodeUpdateDryRunResult(t, stdout); r.RequestedVersion != "1.2.3" {
+		t.Fatalf("--target-version: requested=%q want 1.2.3", r.RequestedVersion)
+	}
+
+	// Hidden alias still resolves to the same target.
+	stdout, _ = runRootOK(t, "--json", "--dry-run", "update", "--version", "v1.2.3")
+	if r := decodeUpdateDryRunResult(t, stdout); r.RequestedVersion != "1.2.3" {
+		t.Fatalf("--version alias: requested=%q want 1.2.3", r.RequestedVersion)
+	}
+
+	// --version is hidden but registered on the update command.
+	if f := updateCmd.Flags().Lookup("version"); f == nil || !f.Hidden {
+		t.Fatalf("--version must be a hidden alias on update; got %v", f)
+	}
+	if updateCmd.Flags().Lookup("target-version") == nil {
+		t.Fatal("--target-version flag must exist on update")
+	}
+}
+
+// --dry-run on a package-managed (npm) install must still produce the read-only
+// preview instead of being short-circuited into the "use your package manager"
+// error. Dry-run is ordered before the npm gate.
+func TestUpdateDryRunReachableUnderNpmInstall(t *testing.T) {
+	resetCLIState(t)
+	resetUpdateState(t)
+	archive := makeUpdateZip(t, "jira-cli.exe", []byte("new-binary"))
+	newUpdateTestServer(t, "1.2.3", archive)
+
+	dir := t.TempDir()
+	exePath := filepath.Join(dir, "jira-cli.exe")
+	if err := os.WriteFile(exePath, []byte("old-binary"), 0o755); err != nil {
+		t.Fatalf("write old binary: %v", err)
+	}
+	updateExecutable = func() (string, error) { return exePath, nil }
+	// Force npm detection via the env override.
+	updateGetenv = func(k string) string {
+		if k == "JIRA_CLI_INSTALL_METHOD" {
+			return "npm"
+		}
+		return ""
+	}
+
+	// Without --dry-run a non-forced npm install is gated (exit 2).
+	runRootExpectSilent(t, ExitBadArgs, "--json", "update")
+
+	// With --dry-run the preview is reachable and changes nothing.
+	stdout, _ := runRootOK(t, "--json", "--dry-run", "update")
+	result := decodeUpdateDryRunResult(t, stdout)
+	if !result.DryRun || result.Installed {
+		t.Fatalf("dry-run under npm: result=%+v", result)
+	}
+	if result.InstallMethod != "npm" {
+		t.Fatalf("install_method=%q want npm", result.InstallMethod)
+	}
+	if got, _ := os.ReadFile(exePath); string(got) != "old-binary" {
+		t.Fatalf("dry-run changed binary to %q", got)
+	}
+}

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.9] - 2026-06-25
+
+### Fixed
+
+- `update` now uses `--target-version` as the canonical flag to select a specific release; `--version` is kept as a hidden, deprecated alias so the target-release selector is no longer confused with the root command's `--version` (which prints the tool version).
+- A failure to download the Sigstore signature bundle during `verify_signature` (5xx, connection reset, DNS, rate-limit) is now classified on the retryable network taxonomy (`E_SERVER`/`E_NETWORK`/`E_RATE_LIMITED`/`E_TIMEOUT`) with a SIGINT/SIGTERM check (`E_INTERRUPTED`, exit 130), instead of being collapsed into non-retryable `E_INTEGRITY`. Only a fetched-but-invalid signature (or a deliberately missing bundle) remains `E_INTEGRITY`. Discover/download HTTP failures are likewise mapped by status through the single `ErrorCodeFromStatus` taxonomy, so a 404 on a requested `--target-version` tag surfaces as `E_NOT_FOUND` (exit 3) rather than a generic network error.
+- `update --dry-run` is now evaluated before the package-manager (npm) gate, so the read-only preview is always reachable on a package-managed install instead of being short-circuited into the "use your package manager" error.
+
 ## [1.1.8] - 2026-06-22
 
 ### Added
