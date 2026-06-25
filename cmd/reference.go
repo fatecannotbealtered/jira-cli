@@ -431,13 +431,13 @@ func referenceSchemas() map[string]referenceDataSchema {
 		"batch_create_result": {Shape: "object", Fields: []string{"action", "items", "summary", "_untrusted"}, UntrustedFields: []string{"items[].error.message"}},
 		"sprint_move_result":  {Shape: "object", Fields: []string{"sprintId", "issues"}},
 		"sprint_close_result": {Shape: "object", Fields: []string{"sprintId", "state", "changed"}},
-		"auth_result":         {Shape: "object", Fields: []string{"status", "displayName", "username"}},
+		"auth_result":         {Shape: "object", Fields: []string{"status", "display_name", "username"}},
 		"logout_result":       {Shape: "object", Fields: []string{"status"}},
 
 		// Self-description documents (cmd/reference.go, context.go, doctor.go, changelog.go, update.go).
 		"reference":     {Shape: "object", Fields: []string{"tool", "version", "security_tier", "release_readiness", "root", "commands", "exit_codes", "error_codes", "schemas"}},
 		"context":       {Shape: "object", Fields: []string{"tool", "version", "runtime", "config", "credentials", "account", "errors", "env", "notices"}},
-		"doctor":        {Shape: "object", Fields: []string{"checks", "notices", "host", "username", "displayName", "latency_ms"}},
+		"doctor":        {Shape: "object", Fields: []string{"checks", "notices", "host", "username", "display_name", "latency_ms"}},
 		"changelog":     {Shape: "object", Fields: []string{"current_version", "since", "entries"}},
 		"update_report": {Shape: "object", Fields: []string{"current_version", "latest_version", "requested_version", "previous_version", "knowledge_refresh", "update_available", "installed", "check_only", "dry_run", "install_method", "manager_command", "asset", "path", "checksum_verified", "signature_status", "signature_verified", "skill_sync_command", "skill_sync_status", "notices"}},
 	}

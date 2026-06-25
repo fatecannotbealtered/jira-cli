@@ -79,7 +79,7 @@ func refreshUpdateNotices(ctx context.Context, source string) []updateNotice {
 }
 
 func updateNoticesFromResult(result updateResult, source string) []updateNotice {
-	notices := updateNoticesFromValues(result.CurrentVersion, result.LatestVersion, result.InstallMethod, result.ManagerCommand, source)
+	notices := updateNoticesFromValues(result.CurrentVersion, result.TargetVersion, result.InstallMethod, result.Command, source)
 	writeUpdateNoticeCache(notices)
 	return notices
 }

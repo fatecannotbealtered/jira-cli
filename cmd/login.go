@@ -85,9 +85,9 @@ func runLogin(_ *cobra.Command, _ []string) error {
 
 		if jsonMode {
 			output.PrintJSON(map[string]string{
-				"status":      "ok",
-				"displayName": myself.DisplayName,
-				"username":    myself.Name,
+				"status":       "ok",
+				"display_name": myself.DisplayName,
+				"username":     myself.Name,
 			})
 			return nil
 		}
@@ -158,9 +158,9 @@ func runLogin(_ *cobra.Command, _ []string) error {
 
 	if jsonMode {
 		output.PrintJSON(map[string]string{
-			"status":      "ok",
-			"displayName": myself.DisplayName,
-			"username":    myself.Name,
+			"status":       "ok",
+			"display_name": myself.DisplayName,
+			"username":     myself.Name,
 		})
 		return nil
 	}

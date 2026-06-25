@@ -35,7 +35,7 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 		Notices     []updateNotice `json:"notices,omitempty"`
 		Host        string         `json:"host,omitempty"`
 		Username    string         `json:"username,omitempty"`
-		DisplayName string         `json:"displayName,omitempty"`
+		DisplayName string         `json:"display_name,omitempty"`
 		LatencyMs   int64          `json:"latency_ms,omitempty"`
 	}
 	addCheck := func(result *doctorResult, check, status, msg, fix string) {

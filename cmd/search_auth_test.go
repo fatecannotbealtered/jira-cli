@@ -577,7 +577,7 @@ func TestDoctor_SuccessJSON(t *testing.T) {
 	if !foundReleaseReadiness {
 		t.Fatalf("missing release_readiness check: %v", checks)
 	}
-	if result["username"] != "jdoe" || result["displayName"] != "John Doe" {
+	if result["username"] != "jdoe" || result["display_name"] != "John Doe" {
 		t.Fatalf("user fields=%v", result)
 	}
 }

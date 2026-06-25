@@ -101,8 +101,9 @@ type githubReleaseAsset struct {
 type updateResult struct {
 	// current_version is the running version before an install and the newly
 	// installed version afterwards; previous_version is set on install.
+	Status            string         `json:"status,omitempty"`
 	CurrentVersion    string         `json:"current_version"`
-	LatestVersion     string         `json:"latest_version"`
+	TargetVersion     string         `json:"target_version"`
 	RequestedVersion  string         `json:"requested_version,omitempty"`
 	PreviousVersion   string         `json:"previous_version,omitempty"`
 	KnowledgeRefresh  string         `json:"knowledge_refresh,omitempty"`
@@ -111,7 +112,7 @@ type updateResult struct {
 	CheckOnly         bool           `json:"check_only,omitempty"`
 	DryRun            bool           `json:"dry_run,omitempty"`
 	InstallMethod     string         `json:"install_method,omitempty"`
-	ManagerCommand    string         `json:"manager_command,omitempty"`
+	Command           string         `json:"command,omitempty"`
 	Asset             string         `json:"asset,omitempty"`
 	Path              string         `json:"path,omitempty"`
 	ChecksumVerified  bool           `json:"checksum_verified,omitempty"`
@@ -203,7 +204,7 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 	installMethod := detectInstallMethod(exePath)
 	result := updateResult{
 		CurrentVersion:   currentVersion,
-		LatestVersion:    latestVersion,
+		TargetVersion:    latestVersion,
 		RequestedVersion: requestedVersionField(targetVersion),
 		UpdateAvailable:  available,
 		CheckOnly:        checkOnly,
@@ -215,9 +216,10 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 		SkillSyncStatus:  "not_run",
 	}
 	if installMethod != "" {
-		result.ManagerCommand = managerUpdateCommand(installMethod, latestVersion)
+		result.Command = managerUpdateCommand(installMethod, latestVersion)
 	}
 	if checkOnly {
+		result.Status = "checked"
 		result.Notices = updateNoticesFromResult(result, "update_check")
 	}
 
@@ -232,6 +234,7 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 		// able to show what `update` would do without being short-circuited into
 		// the "use your package manager" error.
 		result.DryRun = true
+		result.Status = "dry_run"
 		printUpdateDryRunResult(result)
 		return nil
 	}
@@ -240,6 +243,7 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 	}
 	if !available && !requestedSpecific && !forceMode {
 		// Idempotent no-op: already on the latest (or requested) version.
+		result.Status = "up_to_date"
 		printUpdateResult(result)
 		return nil
 	}
@@ -426,14 +430,14 @@ func runPackageManagerUpdate(ctx context.Context, result updateResult, method, t
 	if err := updateRunPackageManager(ctx, method, targetVersion); err != nil {
 		// The package manager owns download/integrity/replace; a failure here
 		// leaves the installed binary unchanged (binary_replaced:false).
-		msg := fmt.Sprintf("package-manager update failed: %s — run %q manually", strings.TrimSpace(err.Error()), result.ManagerCommand)
+		msg := fmt.Sprintf("package-manager update failed: %s — run %q manually", strings.TrimSpace(err.Error()), result.Command)
 		details := map[string]any{
 			"stage":             updateStageReplace,
 			"current_version":   result.CurrentVersion,
 			"binary_replaced":   false,
 			"skill_sync_status": "not_run",
 			"install_method":    method,
-			"command":           result.ManagerCommand,
+			"command":           result.Command,
 		}
 		if jsonMode {
 			output.PrintErrorJSONWithDetails(msg, 0, output.ErrIO, details)
@@ -445,7 +449,7 @@ func runPackageManagerUpdate(ctx context.Context, result updateResult, method, t
 	}
 
 	result.PreviousVersion = result.CurrentVersion
-	result.CurrentVersion = result.LatestVersion
+	result.CurrentVersion = result.TargetVersion
 	result.Installed = true
 	result.SignatureStatus = "not_checked"
 
@@ -469,8 +473,8 @@ func printPackageManagerUpdate(result updateResult) {
 		return
 	}
 	output.Warn("This jira-cli installation appears to be managed by " + result.InstallMethod + ".")
-	if result.ManagerCommand != "" {
-		output.Info("Update with: " + result.ManagerCommand)
+	if result.Command != "" {
+		output.Info("Update with: " + result.Command)
 	}
 	output.Info("Use --force only if you intentionally want to replace the binary in place.")
 }
@@ -490,7 +494,7 @@ func printUpdateResult(result updateResult) {
 	}
 	if result.DryRun {
 		if result.UpdateAvailable || result.RequestedVersion != "" {
-			output.Info(fmt.Sprintf("[dry-run] would install jira-cli %s over %s", result.LatestVersion, result.CurrentVersion))
+			output.Info(fmt.Sprintf("[dry-run] would install jira-cli %s over %s", result.TargetVersion, result.CurrentVersion))
 		} else {
 			output.Info(fmt.Sprintf("[dry-run] jira-cli is already at %s", result.CurrentVersion))
 		}
@@ -498,14 +502,14 @@ func printUpdateResult(result updateResult) {
 	}
 	if result.CheckOnly {
 		if result.UpdateAvailable {
-			output.Info(fmt.Sprintf("Update available: %s -> %s", result.CurrentVersion, result.LatestVersion))
+			output.Info(fmt.Sprintf("Update available: %s -> %s", result.CurrentVersion, result.TargetVersion))
 		} else {
 			output.Success(fmt.Sprintf("jira-cli is up to date (%s)", result.CurrentVersion))
 		}
 		return
 	}
 	if result.UpdateAvailable {
-		output.Info(fmt.Sprintf("Update available: %s -> %s", result.CurrentVersion, result.LatestVersion))
+		output.Info(fmt.Sprintf("Update available: %s -> %s", result.CurrentVersion, result.TargetVersion))
 	} else {
 		output.Success(fmt.Sprintf("jira-cli is already up to date (%s)", result.CurrentVersion))
 	}

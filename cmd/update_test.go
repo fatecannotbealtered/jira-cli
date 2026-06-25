@@ -118,7 +118,7 @@ func TestUpdateCheckJSON(t *testing.T) {
 	stdout, _ := runRootOK(t, "--json", "update", "--check")
 	var result updateResult
 	decodeEnvelopeData(t, stdout, &result)
-	if !result.UpdateAvailable || result.CurrentVersion != "1.0.0" || result.LatestVersion != "1.2.3" {
+	if !result.UpdateAvailable || result.CurrentVersion != "1.0.0" || result.TargetVersion != "1.2.3" {
 		t.Fatalf("result=%+v", result)
 	}
 	if !result.CheckOnly {
@@ -258,7 +258,7 @@ func TestUpdateInstallsRelease(t *testing.T) {
 	}
 	var result updateResult
 	decodeEnvelopeData(t, stdout, &result)
-	if !result.Installed || !result.ChecksumVerified || result.LatestVersion != "1.2.3" {
+	if !result.Installed || !result.ChecksumVerified || result.TargetVersion != "1.2.3" {
 		t.Fatalf("result=%+v", result)
 	}
 	if result.SignatureStatus != "verified" || !result.SignatureVerified {
