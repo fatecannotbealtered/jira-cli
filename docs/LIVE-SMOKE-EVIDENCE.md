@@ -29,7 +29,7 @@ All v1.1.3 new read commands are live-verified.
 
 Run against the same production Jira Data Center. All mutations used
 self-created throwaway issues in a test project, self-reported and
-self-assigned to `tester`; aggregate pass/fail and method only — no
+self-assigned to a throwaway test account; aggregate pass/fail and method only — no
 hosts, keys, tokens, or returned content recorded. Issues were neutralised
 (transitioned to Done, unassigned) afterward; hard-delete is denied by the
 project ACL (E_FORBIDDEN), a project-config artifact, not a CLI defect.
