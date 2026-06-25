@@ -29,6 +29,7 @@ func resetUpdateState(t *testing.T) {
 	oldGetenv := updateGetenv
 	oldSkillSync := updateSkillSync
 	oldVerifySig := updateVerifySignature
+	oldRunPM := updateRunPackageManager
 	t.Cleanup(func() {
 		version = oldVersion
 		updateHTTPClient = oldClient
@@ -39,6 +40,7 @@ func resetUpdateState(t *testing.T) {
 		updateGetenv = oldGetenv
 		updateSkillSync = oldSkillSync
 		updateVerifySignature = oldVerifySig
+		updateRunPackageManager = oldRunPM
 	})
 	version = "1.0.0"
 	updateGOOS = func() string { return "windows" }
@@ -49,6 +51,8 @@ func resetUpdateState(t *testing.T) {
 	// bundle cannot be produced in a unit test. Fail-closed control flow is
 	// covered by overriding this with an error-returning stub.
 	updateVerifySignature = func(_, _, _ string) error { return nil }
+	// Package-manager install is stubbed; tests never shell out to real npm/go.
+	updateRunPackageManager = func(context.Context, string, string) error { return nil }
 }
 
 func newUpdateTestServer(t *testing.T, releaseVersion string, archive []byte) *httptest.Server {
@@ -122,7 +126,9 @@ func TestUpdateCheckJSON(t *testing.T) {
 	}
 }
 
-func TestUpdatePackageManagerInstallRequiresForce(t *testing.T) {
+// A bare `update` on an npm-managed install now DRIVES npm: it invokes the
+// package manager (via the seam), syncs the Skill, and reports status success.
+func TestUpdatePackageManagerDrivesNPM(t *testing.T) {
 	resetCLIState(t)
 	resetUpdateState(t)
 	archive := makeUpdateZip(t, "jira-cli.exe", []byte("new-binary"))
@@ -137,9 +143,92 @@ func TestUpdatePackageManagerInstallRequiresForce(t *testing.T) {
 		return ""
 	}
 
-	stdout, _ := runRootExpectSilent(t, ExitBadArgs, "update")
-	if !strings.Contains(stdout, "npm install -g "+updatePackageName+"@latest") {
-		t.Fatalf("expected npm update command in stdout, got %q", stdout)
+	var gotMethod, gotVersion string
+	var skillSynced bool
+	updateRunPackageManager = func(_ context.Context, method, ver string) error {
+		gotMethod, gotVersion = method, ver
+		return nil
+	}
+	updateSkillSync = func(context.Context, string) error { skillSynced = true; return nil }
+
+	stdout, _ := runRootOK(t, "--json", "update")
+	if gotMethod != "npm" {
+		t.Fatalf("expected npm to be driven, got method=%q", gotMethod)
+	}
+	if normalizeVersion(gotVersion) != "1.2.3" {
+		t.Fatalf("expected version 1.2.3 passed to npm, got %q", gotVersion)
+	}
+	if !skillSynced {
+		t.Fatalf("expected Skill sync after npm install")
+	}
+	var result updateResult
+	decodeEnvelopeData(t, stdout, &result)
+	if !result.Installed || result.SkillSyncStatus != "synced" {
+		t.Fatalf("result=%+v", result)
+	}
+	if result.SignatureStatus != "not_checked" {
+		t.Fatalf("signature_status should be not_checked on npm path, got %q", result.SignatureStatus)
+	}
+}
+
+// --dry-run on a package-manager install is a read-only preview: it must NOT
+// invoke the package manager.
+func TestUpdatePackageManagerDryRunDoesNotExecute(t *testing.T) {
+	resetCLIState(t)
+	resetUpdateState(t)
+	archive := makeUpdateZip(t, "jira-cli.exe", []byte("new-binary"))
+	newUpdateTestServer(t, "1.2.3", archive)
+	updateExecutable = func() (string, error) {
+		return filepath.Join(t.TempDir(), "jira-cli.exe"), nil
+	}
+	updateGetenv = func(key string) string {
+		if key == "JIRA_CLI_INSTALL_METHOD" {
+			return "npm"
+		}
+		return ""
+	}
+
+	called := false
+	updateRunPackageManager = func(context.Context, string, string) error { called = true; return nil }
+
+	stdout, _ := runRootOK(t, "--json", "--dry-run", "update")
+	if called {
+		t.Fatalf("dry-run must not invoke the package manager")
+	}
+	result := decodeUpdateDryRunResult(t, stdout)
+	if !result.DryRun {
+		t.Fatalf("expected dry_run=true, got %+v", result)
+	}
+}
+
+// When the package manager fails, the installed binary is unchanged: E_IO,
+// binary_replaced:false.
+func TestUpdatePackageManagerFailureReportsUnchanged(t *testing.T) {
+	resetCLIState(t)
+	resetUpdateState(t)
+	archive := makeUpdateZip(t, "jira-cli.exe", []byte("new-binary"))
+	newUpdateTestServer(t, "1.2.3", archive)
+	updateExecutable = func() (string, error) {
+		return filepath.Join(t.TempDir(), "jira-cli.exe"), nil
+	}
+	updateGetenv = func(key string) string {
+		if key == "JIRA_CLI_INSTALL_METHOD" {
+			return "npm"
+		}
+		return ""
+	}
+	updateRunPackageManager = func(context.Context, string, string) error {
+		return errors.New("ETARGET no matching version")
+	}
+
+	stdout, _ := runRootExpectSilent(t, ExitGeneric, "--json", "update")
+	errObj := decodeEnvelopeError(t, stdout)
+	if errObj["code"] != string(output.ErrIO) {
+		t.Fatalf("expected E_IO, got code=%v in %s", errObj["code"], stdout)
+	}
+	details, _ := errObj["details"].(map[string]any)
+	if details["binary_replaced"] != false {
+		t.Fatalf("binary_replaced should be false, got %v", details["binary_replaced"])
 	}
 }
 
@@ -663,17 +752,22 @@ func TestUpdateDryRunReachableUnderNpmInstall(t *testing.T) {
 		return ""
 	}
 
-	// Without --dry-run a non-forced npm install is gated (exit 2).
-	runRootExpectSilent(t, ExitBadArgs, "--json", "update")
+	// Without --dry-run a bare `update` now DRIVES npm (via the stub seam) and succeeds.
+	stdout, _ := runRootOK(t, "--json", "update")
+	var result updateResult
+	decodeEnvelopeData(t, stdout, &result)
+	if !result.Installed || result.InstallMethod != "npm" {
+		t.Fatalf("npm drive: result=%+v", result)
+	}
 
 	// With --dry-run the preview is reachable and changes nothing.
-	stdout, _ := runRootOK(t, "--json", "--dry-run", "update")
-	result := decodeUpdateDryRunResult(t, stdout)
-	if !result.DryRun || result.Installed {
-		t.Fatalf("dry-run under npm: result=%+v", result)
+	stdout, _ = runRootOK(t, "--json", "--dry-run", "update")
+	dryResult := decodeUpdateDryRunResult(t, stdout)
+	if !dryResult.DryRun || dryResult.Installed {
+		t.Fatalf("dry-run under npm: result=%+v", dryResult)
 	}
-	if result.InstallMethod != "npm" {
-		t.Fatalf("install_method=%q want npm", result.InstallMethod)
+	if dryResult.InstallMethod != "npm" {
+		t.Fatalf("install_method=%q want npm", dryResult.InstallMethod)
 	}
 	if got, _ := os.ReadFile(exePath); string(got) != "old-binary" {
 		t.Fatalf("dry-run changed binary to %q", got)

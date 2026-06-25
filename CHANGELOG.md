@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.10] - 2026-06-25
+
+### Added
+
+- Contract single-source: `internal/contract/contract_gen.go` is now generated from `contract/contract.json` (vendored from ai-native-cli-spec@v1.4) via `scripts/gen-contract.js`. `internal/output` imports the generated package so `SchemaVersion`, `ExitCodeForErrorCode`, and `RetryableForErrorCode` cannot drift from the fleet contract.
+- Conformance test `internal/output/contract_conformance_test.go` asserts every emitted error code is in the canonical contract with the exact exit + retryable, and that success/error envelopes carry only the canonical top-level and meta keys.
+- CI guard `scripts/check-spec.js` added to the `npm-audit` job (after `check-version.js`) to fail the build if the vendored contract drifts from ai-native-cli-spec.
+
+### Changed
+
+- `.agent` is now synced from ai-native-cli-spec@v1.4 (SPEC_VERSION pinned).
+- `update` on a package-manager-managed install (npm or Go) now **drives** the package manager — it runs `npm install -g @fateforge/jira-cli@<ver>` (or `go install`) on the user's behalf, then syncs the Skill, and reports `status: "updated"`. Previously it printed the command and exited with code 2. `--dry-run` remains read-only (previews the command, runs nothing). A PM failure returns `E_IO`, `binary_replaced: false`, with the command for manual recovery.
+- `exitForUpdateCode` now delegates to `output.ExitCodeForErrorCode` (sourced from the contract) instead of a hand-coded switch, eliminating a class of exit-code drift.
+
 ## [1.1.9] - 2026-06-25
 
 ### Fixed

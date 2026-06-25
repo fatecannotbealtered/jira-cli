@@ -5,9 +5,14 @@ import (
 	"fmt"
 	"os"
 	"time"
+
+	"github.com/fatecannotbealtered/jira-cli/internal/contract"
 )
 
-const SchemaVersion = "1.0"
+// SchemaVersion is sourced from the canonical contract (contract/contract.json
+// via internal/contract/contract_gen.go), so the JSON schema version cannot drift
+// from the fleet contract.
+const SchemaVersion = contract.SchemaVersion
 
 // jsonMarshalIndent is json.MarshalIndent; overridden in tests for error-path coverage.
 var jsonMarshalIndent = json.MarshalIndent
@@ -144,13 +149,18 @@ func ErrorCodeFromStatus(statusCode int) ErrorCode {
 	}
 }
 
+// RetryableForErrorCode reports whether an agent may retry an error code. Sourced
+// from the canonical contract (internal/contract) so it cannot drift from the
+// fleet's retryability table.
 func RetryableForErrorCode(code ErrorCode) bool {
-	switch code {
-	case ErrRateLimit, ErrServer, ErrNetwork, ErrTimeout, ErrInterrupted:
-		return true
-	default:
-		return false
-	}
+	return contract.Retryable(string(code))
+}
+
+// ExitCodeForErrorCode maps a semantic error code to its process exit code. It
+// is sourced from the canonical contract (internal/contract) so the exit mapping
+// cannot drift from the fleet's E_* -> exit table.
+func ExitCodeForErrorCode(code ErrorCode) int {
+	return contract.ExitFor(string(code))
 }
 
 // HintForErrorCode returns an actionable hint for the given error code.

@@ -42,13 +42,14 @@ const (
 )
 
 var (
-	updateHTTPClient = &http.Client{Timeout: 30 * time.Second}
-	updateBaseURL    = updateAPIBase
-	updateExecutable = os.Executable
-	updateGOOS       = func() string { return runtime.GOOS }
-	updateGOARCH     = func() string { return runtime.GOARCH }
-	updateGetenv     = os.Getenv
-	updateSkillSync  = runUpdateSkillSync
+	updateHTTPClient        = &http.Client{Timeout: 30 * time.Second}
+	updateBaseURL           = updateAPIBase
+	updateExecutable        = os.Executable
+	updateGOOS              = func() string { return runtime.GOOS }
+	updateGOARCH            = func() string { return runtime.GOARCH }
+	updateGetenv            = os.Getenv
+	updateSkillSync         = runUpdateSkillSync
+	updateRunPackageManager = runPackageManagerInstall
 )
 
 var updateCmd = &cobra.Command{
@@ -214,7 +215,7 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 		SkillSyncStatus:  "not_run",
 	}
 	if installMethod != "" {
-		result.ManagerCommand = managerUpdateCommand(installMethod, targetVersion)
+		result.ManagerCommand = managerUpdateCommand(installMethod, latestVersion)
 	}
 	if checkOnly {
 		result.Notices = updateNoticesFromResult(result, "update_check")
@@ -235,8 +236,7 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 		return nil
 	}
 	if installMethod != "" && !forceMode {
-		printPackageManagerUpdate(result)
-		return SilentErr(ExitBadArgs)
+		return runPackageManagerUpdate(ctx, result, installMethod, latestVersion)
 	}
 	if !available && !requestedSpecific && !forceMode {
 		// Idempotent no-op: already on the latest (or requested) version.
@@ -414,24 +414,53 @@ func classifyReplaceError(err error) output.ErrorCode {
 }
 
 func exitForUpdateCode(code output.ErrorCode) int {
-	switch code {
-	case output.ErrValidation:
-		return ExitBadArgs
-	case output.ErrNotFound:
-		return ExitNotFound
-	case output.ErrAuth, output.ErrForbidden, output.ErrConfig:
-		return ExitForbidden
-	case output.ErrNetwork, output.ErrRateLimit, output.ErrServer:
-		return ExitNetwork
-	case output.ErrTimeout:
-		return ExitTimeout
-	case output.ErrIntegrity, output.ErrIO:
-		return ExitGeneric
-	case output.ErrInterrupted:
-		return ExitInterrupted
-	default:
-		return ExitGeneric
+	return output.ExitCodeForErrorCode(code)
+}
+
+// runPackageManagerUpdate handles `update` for a package-manager-managed install
+// (npm or Go). The tool DRIVES the package manager — it runs the install command
+// on the user's behalf, then syncs the Skill. Integrity on this path is the
+// package manager's own, so signature_status stays "not_checked". The new version
+// takes effect on the next invocation (this process is still the old image).
+func runPackageManagerUpdate(ctx context.Context, result updateResult, method, targetVersion string) error {
+	if err := updateRunPackageManager(ctx, method, targetVersion); err != nil {
+		// The package manager owns download/integrity/replace; a failure here
+		// leaves the installed binary unchanged (binary_replaced:false).
+		msg := fmt.Sprintf("package-manager update failed: %s — run %q manually", strings.TrimSpace(err.Error()), result.ManagerCommand)
+		details := map[string]any{
+			"stage":             updateStageReplace,
+			"current_version":   result.CurrentVersion,
+			"binary_replaced":   false,
+			"skill_sync_status": "not_run",
+			"install_method":    method,
+			"command":           result.ManagerCommand,
+		}
+		if jsonMode {
+			output.PrintErrorJSONWithDetails(msg, 0, output.ErrIO, details)
+			setExitCode(exitForUpdateCode(output.ErrIO))
+			return ErrSilent
+		}
+		output.Error(msg)
+		return ErrSilent
 	}
+
+	result.PreviousVersion = result.CurrentVersion
+	result.CurrentVersion = result.LatestVersion
+	result.Installed = true
+	result.SignatureStatus = "not_checked"
+
+	if err := updateSkillSync(ctx, updateSkillRepo); err != nil {
+		result.SkillSyncStatus = "failed"
+		if jsonMode {
+			output.PrintJSON(result)
+			return nil
+		}
+		output.Warn(fmt.Sprintf("updated jira-cli to %s via %s, but Skill sync failed: %s — run %q", result.CurrentVersion, method, err.Error(), result.SkillSyncCommand))
+		return nil
+	}
+	result.SkillSyncStatus = "synced"
+	printUpdateResult(result)
+	return nil
 }
 
 func printPackageManagerUpdate(result updateResult) {
@@ -918,4 +947,36 @@ func parseVersionParts(v string) []int {
 		parts = append(parts, n)
 	}
 	return parts
+}
+
+// runPackageManagerInstall drives the package manager to install the target
+// version. argv is built directly (no shell) so the version string cannot be
+// reinterpreted by a shell.
+func runPackageManagerInstall(ctx context.Context, method, targetVersion string) error {
+	var name string
+	var args []string
+	switch strings.ToLower(method) {
+	case "npm":
+		ver := normalizeVersion(targetVersion)
+		if ver == "" {
+			ver = "latest"
+		}
+		name = "npm"
+		args = []string{"install", "-g", updatePackageName + "@" + ver}
+	case "go":
+		name = "go"
+		args = []string{"install", "github.com/" + updateRepo + "/cmd/jira-cli@" + normalizeReleaseTag(targetVersion)}
+	default:
+		return fmt.Errorf("unsupported package manager: %s", method)
+	}
+	cmd := exec.CommandContext(ctx, name, args...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		msg := strings.TrimSpace(string(out))
+		if msg != "" {
+			return fmt.Errorf("%w: %s", err, msg)
+		}
+		return err
+	}
+	return nil
 }
