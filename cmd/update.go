@@ -467,18 +467,6 @@ func runPackageManagerUpdate(ctx context.Context, result updateResult, method, t
 	return nil
 }
 
-func printPackageManagerUpdate(result updateResult) {
-	if jsonMode {
-		output.PrintJSON(result)
-		return
-	}
-	output.Warn("This jira-cli installation appears to be managed by " + result.InstallMethod + ".")
-	if result.Command != "" {
-		output.Info("Update with: " + result.Command)
-	}
-	output.Info("Use --force only if you intentionally want to replace the binary in place.")
-}
-
 func printUpdateResult(result updateResult) {
 	if jsonMode {
 		output.PrintJSON(result)
