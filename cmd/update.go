@@ -579,7 +579,12 @@ func verifyChecksumSignature(ctx context.Context, checksumData []byte, bundleAss
 		return "failed", fmt.Errorf("writing checksum signature bundle: %w", err)
 	}
 
-	if err := updateVerifySignature(checksumPath, bundlePath, updateSignerIdentityRegexp()); err != nil {
+	if err := updateVerifySignature(ctx, checksumPath, bundlePath, updateSignerIdentityRegexp()); err != nil {
+		if errors.Is(err, errTrustRootUnavailable) {
+			// Refreshing the TUF trust metadata is a network step, not a signature
+			// verdict: surface it as a retryable network failure, not E_INTEGRITY.
+			return "trust_root_unavailable", &signatureDownloadError{err: err}
+		}
 		return "failed", err
 	}
 	return "verified", nil

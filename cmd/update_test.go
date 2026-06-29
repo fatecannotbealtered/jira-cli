@@ -50,7 +50,7 @@ func resetUpdateState(t *testing.T) {
 	// In-process Sigstore verification is stubbed in tests; a live OIDC-signed
 	// bundle cannot be produced in a unit test. Fail-closed control flow is
 	// covered by overriding this with an error-returning stub.
-	updateVerifySignature = func(_, _, _ string) error { return nil }
+	updateVerifySignature = func(_ context.Context, _, _, _ string) error { return nil }
 	// Package-manager install is stubbed; tests never shell out to real npm/go.
 	updateRunPackageManager = func(context.Context, string, string) error { return nil }
 }
@@ -425,7 +425,7 @@ func TestUpdateIntegrityFailureNonRetryable(t *testing.T) {
 		t.Fatalf("write old binary: %v", err)
 	}
 	updateExecutable = func() (string, error) { return exePath, nil }
-	updateVerifySignature = func(_, _, _ string) error { return errors.New("certificate identity mismatch") }
+	updateVerifySignature = func(_ context.Context, _, _, _ string) error { return errors.New("certificate identity mismatch") }
 
 	stdout, _ := runRootExpectSilent(t, ExitGeneric, "--json", "update")
 	errObj := decodeEnvelopeError(t, stdout)
@@ -538,7 +538,7 @@ func TestVerifyChecksumSignature_FailClosed(t *testing.T) {
 	// Bundle present but verification fails: aborts.
 	srv := newUpdateTestServer(t, "1.2.3", makeUpdateZip(t, "jira-cli.exe", []byte("b")))
 	asset := githubReleaseAsset{Name: "checksums.txt.sigstore.json", BrowserDownloadURL: srv.URL + "/assets/checksums.txt.sigstore.json"}
-	updateVerifySignature = func(_, _, _ string) error { return errors.New("certificate identity mismatch") }
+	updateVerifySignature = func(_ context.Context, _, _, _ string) error { return errors.New("certificate identity mismatch") }
 	if _, err := verifyChecksumSignature(context.Background(), []byte("sums"), asset, true); err == nil {
 		t.Fatal("signature verification failure must abort")
 	}
@@ -631,7 +631,7 @@ func TestUpdateSignatureVerifyFailureStaysIntegrity(t *testing.T) {
 		t.Fatalf("write old binary: %v", err)
 	}
 	updateExecutable = func() (string, error) { return exePath, nil }
-	updateVerifySignature = func(_, _, _ string) error { return errors.New("certificate identity mismatch") }
+	updateVerifySignature = func(_ context.Context, _, _, _ string) error { return errors.New("certificate identity mismatch") }
 
 	stdout, _ := runRootExpectSilent(t, ExitGeneric, "--json", "update")
 	errObj := decodeEnvelopeError(t, stdout)
