@@ -1,10 +1,10 @@
 ---
 name: jira-cli
-version: "1.1.11"
+version: "1.1.12"
 description: "Jira Data Center CLI for AI agents; triggers for Jira DC issue, sprint, board, epic, project, user, filter, JQL search, PAT auth, audit, update, and automation tasks. Not for Jira Cloud."
 license: MIT
 user-invocable: true
-metadata: {"requires":{"bins":["jira-cli"],"min_version":"1.1.11"}}
+metadata: {"requires":{"bins":["jira-cli"],"min_version":"1.1.12"}}
 ---
 
 # jira-cli

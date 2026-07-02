@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.12] - 2026-07-02
+
 ### Fixed
 
 - **`npm ci` lockfile drift fixed.** The per-platform `optionalDependencies` subentries in `package-lock.json` (`node_modules/@fateforge/jira-cli-*`) were missing their `version`, so once those platform packages were published, `npm ci` failed its consistency check (`lock file's <pkg>@ does not satisfy <pkg>@<version>`). The version bump (`scripts/version-files.js`) now syncs the lockfile platform subentries too, and `check-version.js` guards them, so the drift can't silently recur.
