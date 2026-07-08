@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 )
@@ -82,6 +83,17 @@ func TestMetaNotices_AbsentWhenCacheEmpty(t *testing.T) {
 	notices := metaNoticesFromCommand(t)
 	if len(notices) != 0 {
 		t.Fatalf("meta.notices = %v, want none on empty cache", notices)
+	}
+}
+
+func TestUpdateNoticeAutoDisabledDetectsWindowsGoTestBinary(t *testing.T) {
+	oldArgs := os.Args
+	t.Cleanup(func() { os.Args = oldArgs })
+	os.Args = []string{`C:\Users\me\AppData\Local\Temp\cmd.test.exe`}
+	t.Setenv(updateNoticeEnvOptOut, "")
+
+	if !updateNoticeAutoDisabled() {
+		t.Fatal("Windows Go test binary must not write the real update notice cache")
 	}
 }
 

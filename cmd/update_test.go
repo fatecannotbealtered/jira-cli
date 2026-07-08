@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -17,6 +18,19 @@ import (
 
 	"github.com/fatecannotbealtered/jira-cli/internal/output"
 )
+
+func assertNoMetaNotices(t *testing.T, stdout string) {
+	t.Helper()
+	var env struct {
+		Meta map[string]any `json:"meta"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &env); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, stdout)
+	}
+	if _, ok := env.Meta["notices"]; ok {
+		t.Fatalf("stale meta.notices present: %s", stdout)
+	}
+}
 
 func resetUpdateState(t *testing.T) {
 	t.Helper()
@@ -166,8 +180,143 @@ func TestUpdatePackageManagerDrivesNPM(t *testing.T) {
 	if !result.Installed || result.SkillSyncStatus != "synced" {
 		t.Fatalf("result=%+v", result)
 	}
+	if result.UpdateAvailable {
+		t.Fatalf("successful package-manager update must report final update_available=false, got %+v", result)
+	}
 	if result.SignatureStatus != "not_checked" {
 		t.Fatalf("signature_status should be not_checked on npm path, got %q", result.SignatureStatus)
+	}
+}
+
+func TestUpdatePackageManagerClearsNoticeCacheAfterInstall(t *testing.T) {
+	resetCLIState(t)
+	resetUpdateState(t)
+	enableNoticeCache(t)
+	writeUpdateNoticeCache(updateNoticesFromValues("1.0.0", "1.2.3", "npm", "", "update_check"))
+
+	archive := makeUpdateZip(t, "jira-cli.exe", []byte("new-binary"))
+	newUpdateTestServer(t, "1.2.3", archive)
+	updateExecutable = func() (string, error) {
+		return filepath.Join(t.TempDir(), "jira-cli.exe"), nil
+	}
+	updateGetenv = func(key string) string {
+		if key == "JIRA_CLI_INSTALL_METHOD" {
+			return "npm"
+		}
+		return ""
+	}
+
+	stdout, _ := runRootOK(t, "--json", "update")
+	var result updateResult
+	decodeEnvelopeData(t, stdout, &result)
+	if !result.Installed || result.UpdateAvailable {
+		t.Fatalf("result=%+v", result)
+	}
+	if notices := readCachedUpdateNotices(); len(notices) != 0 {
+		t.Fatalf("cached notices after install = %+v, want none", notices)
+	}
+}
+
+func TestUpdatePackageManagerSkillSyncFailureClearsNoticeCache(t *testing.T) {
+	resetCLIState(t)
+	resetUpdateState(t)
+	enableNoticeCache(t)
+	writeUpdateNoticeCache(updateNoticesFromValues("1.0.0", "1.2.3", "npm", "", "update_check"))
+
+	archive := makeUpdateZip(t, "jira-cli.exe", []byte("new-binary"))
+	newUpdateTestServer(t, "1.2.3", archive)
+	updateExecutable = func() (string, error) {
+		return filepath.Join(t.TempDir(), "jira-cli.exe"), nil
+	}
+	updateGetenv = func(key string) string {
+		if key == "JIRA_CLI_INSTALL_METHOD" {
+			return "npm"
+		}
+		return ""
+	}
+	updateSkillSync = func(context.Context, string) error { return errors.New("npx not found") }
+
+	stdout, _ := runRootOK(t, "--json", "update")
+	var result updateResult
+	decodeEnvelopeData(t, stdout, &result)
+	if !result.Installed || result.SkillSyncStatus != "failed" || result.UpdateAvailable {
+		t.Fatalf("result=%+v", result)
+	}
+	assertNoMetaNotices(t, stdout)
+	if notices := readCachedUpdateNotices(); len(notices) != 0 {
+		t.Fatalf("cached notices after partial success = %+v, want none", notices)
+	}
+}
+
+func TestUpdatePackageManagerNoOpDoesNotInstall(t *testing.T) {
+	resetCLIState(t)
+	resetUpdateState(t)
+	enableNoticeCache(t)
+	writeUpdateNoticeCache(updateNoticesFromValues("1.0.0", "9.9.9", "npm", "", "update_check"))
+	version = "1.2.3"
+	archive := makeUpdateZip(t, "jira-cli.exe", []byte("same-binary"))
+	newUpdateTestServer(t, "1.2.3", archive)
+	updateExecutable = func() (string, error) {
+		return filepath.Join(t.TempDir(), "jira-cli.exe"), nil
+	}
+	updateGetenv = func(key string) string {
+		if key == "JIRA_CLI_INSTALL_METHOD" {
+			return "npm"
+		}
+		return ""
+	}
+
+	called := false
+	updateRunPackageManager = func(context.Context, string, string) error {
+		called = true
+		return nil
+	}
+
+	stdout, _ := runRootOK(t, "--json", "update")
+	if called {
+		t.Fatal("package-manager update must not run when already up to date")
+	}
+	var result updateResult
+	decodeEnvelopeData(t, stdout, &result)
+	if result.Status != "up_to_date" || result.Installed || result.UpdateAvailable {
+		t.Fatalf("expected package-manager no-op, got %+v", result)
+	}
+	assertNoMetaNotices(t, stdout)
+	if notices := readCachedUpdateNotices(); len(notices) != 0 {
+		t.Fatalf("cached notices after no-op = %+v, want none", notices)
+	}
+}
+
+func TestUpdatePackageManagerExplicitCurrentTargetNoOpDoesNotInstall(t *testing.T) {
+	resetCLIState(t)
+	resetUpdateState(t)
+	version = "1.2.3"
+	archive := makeUpdateZip(t, "jira-cli.exe", []byte("same-binary"))
+	newUpdateTestServer(t, "1.2.3", archive)
+	updateExecutable = func() (string, error) {
+		return filepath.Join(t.TempDir(), "jira-cli.exe"), nil
+	}
+	updateGetenv = func(key string) string {
+		if key == "JIRA_CLI_INSTALL_METHOD" {
+			return "npm"
+		}
+		return ""
+	}
+
+	called := false
+	updateRunPackageManager = func(context.Context, string, string) error {
+		called = true
+		return nil
+	}
+
+	stdout, _ := runRootOK(t, "--json", "update", "--target-version", "v1.2.3")
+	if called {
+		t.Fatal("package-manager update must not run when explicit target is already installed")
+	}
+	var result updateResult
+	decodeEnvelopeData(t, stdout, &result)
+	if result.Status != "up_to_date" || result.Installed || result.UpdateAvailable {
+		t.Fatalf("expected package-manager explicit-target no-op, got %+v", result)
 	}
 }
 
@@ -260,6 +409,9 @@ func TestUpdateInstallsRelease(t *testing.T) {
 	decodeEnvelopeData(t, stdout, &result)
 	if !result.Installed || !result.ChecksumVerified || result.TargetVersion != "1.2.3" {
 		t.Fatalf("result=%+v", result)
+	}
+	if result.UpdateAvailable {
+		t.Fatalf("successful update must report final update_available=false, got %+v", result)
 	}
 	if result.SignatureStatus != "verified" || !result.SignatureVerified {
 		t.Fatalf("signature not verified: %+v", result)
@@ -476,6 +628,12 @@ func TestUpdateSkillSyncFailureIsPartialSuccess(t *testing.T) {
 	}
 	if details["skill_sync_status"] != "failed" {
 		t.Fatalf("skill_sync_status=%v want failed", details["skill_sync_status"])
+	}
+	if details["target_version"] != "1.2.3" {
+		t.Fatalf("target_version=%v want 1.2.3", details["target_version"])
+	}
+	if details["update_available"] != false {
+		t.Fatalf("update_available=%v want false", details["update_available"])
 	}
 	if details["skill_sync_command"] != updateSkillSyncCommand() {
 		t.Fatalf("missing skill_sync_command, got %v", details["skill_sync_command"])

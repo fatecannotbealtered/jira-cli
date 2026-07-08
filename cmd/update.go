@@ -238,14 +238,16 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 		printUpdateDryRunResult(result)
 		return nil
 	}
-	if installMethod != "" && !forceMode {
-		return runPackageManagerUpdate(ctx, result, installMethod, latestVersion)
-	}
-	if !available && !requestedSpecific && !forceMode {
+	targetMatchesCurrent := normalizeVersion(currentVersion) == latestVersion
+	if ((!available && !requestedSpecific) || (requestedSpecific && targetMatchesCurrent)) && !forceMode {
 		// Idempotent no-op: already on the latest (or requested) version.
 		result.Status = "up_to_date"
+		updateNoticesFromResult(result, "update")
 		printUpdateResult(result)
 		return nil
+	}
+	if installMethod != "" && !forceMode {
+		return runPackageManagerUpdate(ctx, result, installMethod, latestVersion)
 	}
 
 	st.stage = updateStageDownload
@@ -295,6 +297,10 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 	// Atomic swap committed: the tool is now on the new version.
 	st.binaryReplaced = true
 	st.currentVersion = latestVersion
+	result.PreviousVersion = currentVersion
+	result.CurrentVersion = latestVersion
+	result.UpdateAvailable = false
+	updateNoticesFromResult(result, "update")
 
 	st.stage = updateStageSkillSync
 	if err := updateSkillSync(ctx, updateSkillRepo); err != nil {
@@ -311,8 +317,10 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 	result.SignatureVerified = signatureStatus == "verified"
 	result.PreviousVersion = currentVersion
 	result.CurrentVersion = latestVersion
+	result.UpdateAvailable = false
 	result.SkillSyncStatus = "synced"
 	result.KnowledgeRefresh = fmt.Sprintf("run \"jira-cli changelog --since %s\" before continuing", normalizeVersion(currentVersion))
+	updateNoticesFromResult(result, "update")
 	printUpdateResult(result)
 	return nil
 }
@@ -357,6 +365,8 @@ func handleSkillSyncPartial(ctx context.Context, prev, latest, signatureStatus s
 		details["binary_replaced"] = true
 		details["skill_sync_command"] = st.skillSyncCmd
 		details["previous_version"] = normalizeVersion(prev)
+		details["target_version"] = normalizeVersion(latest)
+		details["update_available"] = false
 		details["signature_status"] = signatureStatus
 		output.PrintErrorJSONWithDetails(msg, 0, output.ErrNetwork, details)
 	} else {
@@ -450,8 +460,10 @@ func runPackageManagerUpdate(ctx context.Context, result updateResult, method, t
 
 	result.PreviousVersion = result.CurrentVersion
 	result.CurrentVersion = result.TargetVersion
+	result.UpdateAvailable = false
 	result.Installed = true
 	result.SignatureStatus = "not_checked"
+	updateNoticesFromResult(result, "update")
 
 	if err := updateSkillSync(ctx, updateSkillRepo); err != nil {
 		result.SkillSyncStatus = "failed"
@@ -463,6 +475,7 @@ func runPackageManagerUpdate(ctx context.Context, result updateResult, method, t
 		return nil
 	}
 	result.SkillSyncStatus = "synced"
+	updateNoticesFromResult(result, "update")
 	printUpdateResult(result)
 	return nil
 }
@@ -473,7 +486,7 @@ func printUpdateResult(result updateResult) {
 		return
 	}
 	if result.Installed {
-		if result.UpdateAvailable {
+		if result.PreviousVersion != "" && normalizeVersion(result.PreviousVersion) != normalizeVersion(result.CurrentVersion) {
 			output.Success(fmt.Sprintf("Updated jira-cli from %s to %s", result.PreviousVersion, result.CurrentVersion))
 		} else {
 			output.Success(fmt.Sprintf("Installed jira-cli %s over %s", result.CurrentVersion, result.PreviousVersion))

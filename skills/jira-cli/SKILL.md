@@ -1,10 +1,10 @@
 ---
 name: jira-cli
-version: "1.1.13"
+version: "1.1.14"
 description: "Jira Data Center CLI for AI agents; triggers for Jira DC issue, sprint, board, epic, project, user, filter, JQL search, PAT auth, audit, update, and automation tasks. Not for Jira Cloud."
 license: MIT
 user-invocable: true
-metadata: {"requires":{"bins":["jira-cli"],"min_version":"1.1.13"}}
+metadata: {"requires":{"bins":["jira-cli"],"min_version":"1.1.14"}}
 ---
 
 # jira-cli
@@ -139,6 +139,8 @@ Fields listed in `_untrusted` contain Jira-controlled external content, such as 
 
 Self-update is a **single command, no confirm token**: a bare `jira-cli update` resolves the latest release, verifies its Sigstore signature and checksum in-process, replaces the binary, and syncs the Skill — all in one call. `--check` and `--dry-run` are optional read-only flags (the dry-run preview issues no `confirm_token`). `update` is idempotent: already-latest returns a no-op success.
 
+Successful update results are final-state: `current_version` must equal `target_version`, `update_available` must be `false`, and stale `update_available` notices must be cleared or suppressed before later commands attach `meta.notices`. An already-current install must return a no-op result without running a package-manager install command.
+
 ```bash
 jira-cli update --check --compact     # optional read-only probe
 jira-cli update --dry-run --compact   # optional read-only plan preview (no token)
@@ -153,7 +155,7 @@ Every update failure carries `error.details.stage` (`discover|download|verify_si
 - `verify_signature`/`verify_checksum` → `E_INTEGRITY` (exit 1, **non-retryable**): a supply-chain red flag — stop and report, do not retry.
 - `discover`/`download` network/timeout → retryable; re-run `update` (it is idempotent).
 - `replace` permission/disk → `E_FORBIDDEN`/`E_IO` (not a network blip): fix the environment, then re-run. Binary unchanged.
-- `skill_sync` after the swap → partial success (`ok:false`, `binary_replaced:true`, retryable): you are already on the new binary; run the returned `skill_sync_command`, then `changelog --since <previous_version>`.
+- `skill_sync` after the swap → partial success (`ok:false`, `binary_replaced:true`, retryable): details also carry `target_version` and `update_available:false`; you are already on the new binary, so run the returned `skill_sync_command`, then `changelog --since <previous_version>`.
 - SIGINT/SIGTERM → `E_INTERRUPTED` (exit 130, retryable): a terminal envelope is still emitted stating the real post-state.
 
 ## Playbooks

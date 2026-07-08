@@ -252,7 +252,8 @@ func updateNoticeDisabled() bool {
 // It is a var so tests can exercise the cache read/write path, which is
 // otherwise auto-disabled under the `.test` binary.
 var updateNoticeAutoDisabled = func() bool {
-	return updateNoticeDisabled() || strings.HasSuffix(os.Args[0], ".test")
+	exe := strings.ToLower(os.Args[0])
+	return updateNoticeDisabled() || strings.HasSuffix(exe, ".test") || strings.HasSuffix(exe, ".test.exe")
 }
 
 // noticesAsAny converts cached update notices into the generic slice the output
