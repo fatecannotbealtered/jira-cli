@@ -17,6 +17,10 @@ func init() {
 	commentAddCmd.Flags().String("body", "", "Comment body (required)")
 	issueCommentCmd.AddCommand(commentAddCmd)
 
+	commentEditCmd.Flags().String("id", "", "Comment ID (required)")
+	commentEditCmd.Flags().String("body", "", "Updated comment body (required)")
+	issueCommentCmd.AddCommand(commentEditCmd)
+
 	commentListCmd.Flags().Int("limit", 20, "Max comments to return")
 	issueCommentCmd.AddCommand(commentListCmd)
 
@@ -26,6 +30,7 @@ func init() {
 	issueCmd.AddCommand(issueCommentCmd)
 
 	markWrite(commentAddCmd)
+	markWrite(commentEditCmd)
 	markWrite(commentDeleteCmd)
 }
 
@@ -95,6 +100,41 @@ var commentListCmd = &cobra.Command{
 			rows[i] = []string{c.ID, c.Author.DisplayName, formatTime(c.Created), body}
 		}
 		output.Table(headers, rows)
+		return nil
+	},
+}
+
+var commentEditCmd = &cobra.Command{
+	Use:   "edit <ISSUE_KEY>",
+	Short: "Edit an issue comment",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		client, _, err := newClient()
+		if err != nil {
+			return err
+		}
+		id, _ := cmd.Flags().GetString("id")
+		if id == "" {
+			output.Error("--id is required")
+			return SilentErr(ExitBadArgs)
+		}
+		body, _ := cmd.Flags().GetString("body")
+		if body == "" {
+			output.Error("--body cannot be empty")
+			return SilentErr(ExitBadArgs)
+		}
+		if dryRunOutput("edit comment", map[string]any{"key": args[0], "commentId": id, "body": body}) {
+			return nil
+		}
+		comment, err := client.Issues.UpdateComment(args[0], id, body)
+		if err != nil {
+			return handleAPIError(err, jsonMode)
+		}
+		if jsonMode {
+			output.PrintJSON(toFlatComment(*comment))
+			return nil
+		}
+		output.Success(fmt.Sprintf("Comment updated (ID: %s)", comment.ID))
 		return nil
 	},
 }

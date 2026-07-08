@@ -59,7 +59,7 @@ PowerShell 使用 `$env:NAME = "value"` 设置同样的环境变量。真实密�
 | 领域 | 命令 | Agent 用法 |
 |------|------|------------|
 | Issue | `issue get / list / create / edit / delete / clone / transition / assign / watch / vote` | 管理 Issue 生命周期、状态、负责人和自定义字段。 |
-| 评论、工时、链接、附件 | `issue comment ...`, `issue worklog ...`, `issue link ...`, `issue attach ...`, `issue attachments ...` | 操作协作数据和本地附件下载。 |
+| 评论、工时、链接、附件 | `issue comment add/edit/list/delete`, `issue worklog ...`, `issue link ...`, `issue attach ...`, `issue attachments ...` | 操作协作数据和本地附件下载。 |
 | 搜索与 Filter | `search <jql>`, `filter list / run` | 执行 JQL 和已保存 Filter，并输出低 token JSON 字段。 |
 | 敏捷 | `sprint ...`, `board ...`, `epic ...` | 查看和更新 Board、Backlog、Sprint 与 Epic。 |
 | 项目元数据 | `project ...`, `user ...` | 发现项目、版本、组件、字段、Issue 类型和用户。 |

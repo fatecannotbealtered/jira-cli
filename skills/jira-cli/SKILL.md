@@ -1,10 +1,10 @@
 ---
 name: jira-cli
-version: "1.1.12"
+version: "1.1.13"
 description: "Jira Data Center CLI for AI agents; triggers for Jira DC issue, sprint, board, epic, project, user, filter, JQL search, PAT auth, audit, update, and automation tasks. Not for Jira Cloud."
 license: MIT
 user-invocable: true
-metadata: {"requires":{"bins":["jira-cli"],"min_version":"1.1.12"}}
+metadata: {"requires":{"bins":["jira-cli"],"min_version":"1.1.13"}}
 ---
 
 # jira-cli
@@ -181,6 +181,8 @@ TOKEN=$(jira-cli issue transition PROJ-123 "Done" --dry-run --compact | jq -r '.
 jira-cli issue transition PROJ-123 "Done" --confirm "$TOKEN" --compact
 TOKEN=$(jira-cli issue comment add PROJ-123 --body "Completed and verified." --dry-run --compact | jq -r '.data.confirm_token')
 jira-cli issue comment add PROJ-123 --body "Completed and verified." --confirm "$TOKEN" --compact
+TOKEN=$(jira-cli issue comment edit PROJ-123 --id 10000 --body "Corrected verification note." --dry-run --compact | jq -r '.data.confirm_token')
+jira-cli issue comment edit PROJ-123 --id 10000 --body "Corrected verification note." --confirm "$TOKEN" --compact
 ```
 
 ### Sprint planning

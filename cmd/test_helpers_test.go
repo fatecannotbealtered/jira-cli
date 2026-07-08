@@ -294,7 +294,7 @@ func tokensAreWriteCommand(tokens []string) bool {
 			// commandTokens doesn't return early on the 2-token prefix.
 			return len(tokens) >= 3 && tokens[2] != "list"
 		case "comment":
-			return len(tokens) >= 3 && (tokens[2] == "add" || tokens[2] == "delete")
+			return len(tokens) >= 3 && (tokens[2] == "add" || tokens[2] == "edit" || tokens[2] == "delete")
 		case "worklog":
 			return len(tokens) >= 3 && tokens[2] == "add"
 		}

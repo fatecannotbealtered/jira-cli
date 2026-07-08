@@ -295,6 +295,7 @@ func commandMetaCatalog() map[string]commandMeta {
 		"jira-cli issue attach":         {schema: "attachment[]", examples: []string{"jira-cli issue attach PROJ-1 --file ./log.txt --dry-run --compact", "jira-cli issue attach PROJ-1 --file ./log.txt --confirm <token> --compact"}},
 		"jira-cli issue remote-link":    {schema: "remote_link", examples: []string{"jira-cli issue remote-link PROJ-1 --url https://example.com --title Ref --dry-run --compact", "jira-cli issue remote-link PROJ-1 --url https://example.com --title Ref --confirm <token> --compact"}},
 		"jira-cli issue comment add":    {schema: "comment", examples: []string{"jira-cli issue comment add PROJ-1 --body 'Looking into it' --dry-run --compact", "jira-cli issue comment add PROJ-1 --body 'Looking into it' --confirm <token> --compact"}},
+		"jira-cli issue comment edit":   {schema: "comment", examples: []string{"jira-cli issue comment edit PROJ-1 --id 10000 --body 'Updated note' --dry-run --compact", "jira-cli issue comment edit PROJ-1 --id 10000 --body 'Updated note' --confirm <token> --compact"}},
 		"jira-cli issue comment delete": {schema: "comment_delete_result", examples: []string{"jira-cli issue comment delete PROJ-1 --id 10000 --dry-run --compact", "jira-cli issue comment delete PROJ-1 --id 10000 --confirm <token> --compact"}},
 		"jira-cli issue worklog add":    {schema: "worklog", examples: []string{"jira-cli issue worklog add PROJ-1 --time 1h --dry-run --compact", "jira-cli issue worklog add PROJ-1 --time 1h --confirm <token> --compact"}},
 

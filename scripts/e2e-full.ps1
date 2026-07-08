@@ -124,7 +124,7 @@ function Test-WriteCommand {
         " issue create ", " issue edit ", " issue delete ", " issue assign ", " issue unassign ",
         " issue watch ", " issue unwatch ", " issue vote ", " issue unvote ", " issue attach ",
         " issue bulk-transition ", " issue clone ", " issue transition ", " issue link ", " issue unlink ",
-        " issue remote-link ", " issue comment add ", " issue comment delete ", " issue worklog add ",
+        " issue remote-link ", " issue comment add ", " issue comment edit ", " issue comment delete ", " issue worklog add ",
         " filter create ", " filter delete ",
         " sprint create ", " sprint update ", " sprint close ", " sprint move ",
         " login ", " logout ", " update "
@@ -605,13 +605,14 @@ if (-not $mutate) {
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Variables for write operations
-$newKey   = $null
-$cloneKey = $null
+$newKey    = $null
+$cloneKey  = $null
+$commentId = $null
 
 if (-not $mutate) {
     Write-Phase "Phase I-K: Write Operations (SKIPPED - JIRA_E2E_MUTATE=0)"
     # Add skip rows for all write operations
-    foreach ($id in @("I1","I2","I3","I4","I5","I6","I7","I8","I9","IA","IB","IC","ID","IE","IF1","IF2","IF3",
+    foreach ($id in @("I1","I2","I3","I4","I5","I6","I7","I7E","I8","I9","IA","IB","IC","ID","IE","IF1","IF2","IF3",
                       "J1","J2","J3","J4","K1","K2","K3","K4","K5","K6","K7","K8")) {
         Skip-Row $id "write op" "JIRA_E2E_MUTATE=0"
     }
@@ -651,8 +652,12 @@ if (-not $mutate) {
     Invoke-Test "I5" @("issue", "watch", $newKey) -Skip:(-not $newKey) -SkipReason "no test issue"
     Invoke-Test "I6" @("issue", "vote", $newKey) -Skip:(-not $newKey) -SkipReason "no test issue"
 
-    # I7: Comment
+    # I7/I7E: Comment add/edit
     Invoke-Test "I7" @("issue", "comment", "add", $newKey, "--body", "e2e comment $tag") -Skip:(-not $newKey) -SkipReason "no test issue"
+    if ($script:LastTest.Ok -and -not $script:LastTest.Skipped) {
+        try { $commentId = "$(($script:LastTest.Out | ConvertFrom-Json).id)" } catch {}
+    }
+    Invoke-Test "I7E" @("issue", "comment", "edit", $newKey, "--id", $commentId, "--body", "e2e comment edited $tag") -Skip:(-not ($newKey -and $commentId)) -SkipReason "no test issue or no comment"
 
     # I8: Worklog
     Invoke-Test "I8" @("issue", "worklog", "add", $newKey, "--time", "15m", "--comment", "e2e worklog $tag") -Skip:(-not $newKey) -SkipReason "no test issue"
@@ -722,8 +727,7 @@ if (-not $mutate) {
     Write-Phase "Phase J: Cleanup Write Operations"
 
     # J1: Delete comment
-    $commentId = $null
-    if ($newKey) {
+    if ($newKey -and -not $commentId) {
         $cmResult = Invoke-Bin @("issue", "comment", "list", $newKey, "--json")
         $cmRaw = $cmResult.Out
         if ($cmResult.ExitCode -eq 0) {

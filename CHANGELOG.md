@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.13] - 2026-07-08
+
+### Added
+
+- `issue comment edit <ISSUE_KEY> --id <COMMENT_ID> --body ...` updates one existing Jira comment through the standard `--dry-run` -> `--confirm <token>` write flow and returns the same `_untrusted` comment payload shape as `comment add`.
+
 ## [1.1.12] - 2026-07-02
 
 ### Fixed

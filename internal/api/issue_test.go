@@ -972,6 +972,63 @@ func TestIssueAddComment_InvalidJSON(t *testing.T) {
 	}
 }
 
+func TestIssueUpdateComment_Success(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			t.Errorf("method = %q, want PUT", r.Method)
+		}
+		if !strings.Contains(r.URL.Path, "/issue/PROJ-1/comment/10100") {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		var req map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if req["body"] != "updated comment" {
+			t.Errorf("body = %v, want updated comment", req["body"])
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{"id":"10100","author":{"displayName":"Test"},"body":"updated comment","updated":"2024-01-02T00:00:00.000+0000"}`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	comment, err := c.Issues.UpdateComment("PROJ-1", "10100", "updated comment")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if comment.ID != "10100" {
+		t.Errorf("comment ID = %q, want 10100", comment.ID)
+	}
+}
+
+func TestIssueUpdateComment_Error(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Issues.UpdateComment("PROJ-1", "10100", "updated comment")
+	if err == nil {
+		t.Fatal("expected API error")
+	}
+}
+
+func TestIssueUpdateComment_InvalidJSON(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{bad`)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts.URL)
+	_, err := c.Issues.UpdateComment("PROJ-1", "10100", "updated comment")
+	if err == nil || !strings.Contains(err.Error(), "parsing comment") {
+		t.Fatalf("expected parse error, got %v", err)
+	}
+}
+
 // ─── Issue.ListComments ─────────────────────────────────────────────────────────
 
 func TestIssueListComments_Success(t *testing.T) {

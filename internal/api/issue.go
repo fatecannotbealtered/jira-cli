@@ -251,6 +251,22 @@ func (a *IssueAPI) AddComment(key, body string) (*Comment, error) {
 	return &comment, nil
 }
 
+// UpdateComment updates an existing comment.
+func (a *IssueAPI) UpdateComment(issueKey, commentID, body string) (*Comment, error) {
+	path := a.client.restPath(fmt.Sprintf("/issue/%s/comment/%s",
+		url.PathEscape(issueKey), url.PathEscape(commentID)))
+	req := map[string]any{"body": body}
+	data, err := a.client.Put(path, req)
+	if err != nil {
+		return nil, err
+	}
+	var comment Comment
+	if err := json.Unmarshal(data, &comment); err != nil {
+		return nil, fmt.Errorf("parsing comment: %w", err)
+	}
+	return &comment, nil
+}
+
 // ListComments lists comments.
 func (a *IssueAPI) ListComments(key string, limit int) ([]Comment, error) {
 	if limit <= 0 {

@@ -59,7 +59,7 @@ Worst-case risk tier: **T1 medium** - reads and writes Jira state with the confi
 | Area | Commands | Agent use |
 |------|----------|-----------|
 | Issues | `issue get / list / create / edit / delete / clone / transition / assign / watch / vote` | Manage issue lifecycle, status, owners, and custom fields. |
-| Comments, worklogs, links, attachments | `issue comment ...`, `issue worklog ...`, `issue link ...`, `issue attach ...`, `issue attachments ...` | Operate collaboration data and local attachment downloads. |
+| Comments, worklogs, links, attachments | `issue comment add/edit/list/delete`, `issue worklog ...`, `issue link ...`, `issue attach ...`, `issue attachments ...` | Operate collaboration data and local attachment downloads. |
 | Search and filters | `search <jql>`, `filter list / run` | Run JQL and saved filters with token-efficient JSON fields. |
 | Agile | `sprint ...`, `board ...`, `epic ...` | Inspect and update boards, backlogs, sprints, and epics. |
 | Project metadata | `project ...`, `user ...` | Discover projects, versions, components, fields, issue types, and users. |

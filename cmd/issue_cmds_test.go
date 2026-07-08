@@ -205,8 +205,13 @@ func issueMockHandler(t *testing.T) http.HandlerFunc {
 				writeJSON(w, http.StatusCreated, `{"id":"10011","author":{"displayName":"Alice"},"body":"New comment","created":"2024-01-02T10:00:00.000+0000"}`)
 			}
 
-		case strings.Contains(path, "/comment/") && method == http.MethodDelete:
-			w.WriteHeader(http.StatusNoContent)
+		case strings.Contains(path, "/comment/"):
+			switch method {
+			case http.MethodPut:
+				writeJSON(w, http.StatusOK, `{"id":"10010","author":{"displayName":"Alice"},"body":"Updated comment","updated":"2024-01-03T10:00:00.000+0000"}`)
+			case http.MethodDelete:
+				w.WriteHeader(http.StatusNoContent)
+			}
 
 		case strings.HasSuffix(path, "/worklog"):
 			switch method {
@@ -799,6 +804,32 @@ func TestIssueComment(t *testing.T) {
 		}
 	})
 
+	t.Run("edit missing id", func(t *testing.T) {
+		issueRunSilent(t, ExitBadArgs, "issue", "comment", "edit", sampleIssueKey, "--body", "Updated")
+	})
+
+	t.Run("edit missing body", func(t *testing.T) {
+		issueRunSilent(t, ExitBadArgs, "issue", "comment", "edit", sampleIssueKey, "--id", "10010")
+	})
+
+	t.Run("edit dry-run", func(t *testing.T) {
+		issueRunOK(t, "--dry-run", "issue", "comment", "edit", sampleIssueKey, "--id", "10010", "--body", "Updated")
+	})
+
+	t.Run("edit plain", func(t *testing.T) {
+		stdout, _ := issueRunOK(t, "issue", "comment", "edit", sampleIssueKey, "--id", "10010", "--body", "Updated")
+		if !containsAny(stdout, "Comment updated", "10010") {
+			t.Fatalf("stdout=%q", stdout)
+		}
+	})
+
+	t.Run("edit json", func(t *testing.T) {
+		stdout, _ := issueRunOK(t, "--json", "issue", "comment", "edit", sampleIssueKey, "--id", "10010", "--body", "Updated")
+		if !containsAny(stdout, "10010", "Updated comment", "_untrusted") {
+			t.Fatalf("stdout=%q", stdout)
+		}
+	})
+
 	t.Run("delete missing id", func(t *testing.T) {
 		issueRunSilent(t, ExitBadArgs, "issue", "comment", "delete", sampleIssueKey)
 	})
@@ -1085,6 +1116,7 @@ func TestIssueCommands_NotConfigured_AllRunE(t *testing.T) {
 		{"bulk-transition", []string{"issue", "bulk-transition", "Done", "--issues", "PROJ-1"}},
 		{"comment add", []string{"issue", "comment", "add", sampleIssueKey, "--body", "x"}},
 		{"comment list", []string{"issue", "comment", "list", sampleIssueKey}},
+		{"comment edit", []string{"issue", "comment", "edit", sampleIssueKey, "--id", "1", "--body", "x"}},
 		{"comment delete", []string{"issue", "comment", "delete", sampleIssueKey, "--id", "1"}},
 		{"worklog add", []string{"issue", "worklog", "add", sampleIssueKey, "--time", "1h"}},
 		{"worklog list", []string{"issue", "worklog", "list", sampleIssueKey}},
@@ -1143,6 +1175,7 @@ func TestIssueCommands_APIErrors(t *testing.T) {
 		{"bulk jql", []string{"issue", "bulk-transition", "Done", "--jql", "bad"}, "/rest/api/2/search", http.StatusBadRequest},
 		{"comment add", []string{"issue", "comment", "add", sampleIssueKey, "--body", "x"}, "/rest/api/2/issue/PROJ-1/comment", http.StatusBadRequest},
 		{"comment list", []string{"issue", "comment", "list", sampleIssueKey}, "/rest/api/2/issue/PROJ-1/comment", http.StatusNotFound},
+		{"comment edit", []string{"issue", "comment", "edit", sampleIssueKey, "--id", "1", "--body", "x"}, "/rest/api/2/issue/PROJ-1/comment/1", http.StatusNotFound},
 		{"comment delete", []string{"issue", "comment", "delete", sampleIssueKey, "--id", "1"}, "/rest/api/2/issue/PROJ-1/comment/1", http.StatusNotFound},
 		{"worklog add", []string{"issue", "worklog", "add", sampleIssueKey, "--time", "1h"}, "/rest/api/2/issue/PROJ-1/worklog", http.StatusBadRequest},
 		{"worklog list", []string{"issue", "worklog", "list", sampleIssueKey}, "/rest/api/2/issue/PROJ-1/worklog", http.StatusNotFound},
