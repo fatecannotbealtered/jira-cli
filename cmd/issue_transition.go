@@ -94,8 +94,18 @@ var issueTransitionsCmd = &cobra.Command{
 		if err != nil {
 			return handleAPIError(err, jsonMode)
 		}
+		// Guarantee an empty JSON array (not null) when there are no transitions,
+		// so the machine contract stays "data": [] even if upstream omits the key.
+		if transitions == nil {
+			transitions = []api.Transition{}
+		}
 		if jsonMode {
 			output.PrintJSON(transitions)
+			return nil
+		}
+		if len(transitions) == 0 {
+			output.Info(fmt.Sprintf("No transitions available for %s from its current status "+
+				"(it may be in a terminal state, or you may lack permission to transition it).", args[0]))
 			return nil
 		}
 		headers := []string{"ID", "NAME", "TO STATUS"}

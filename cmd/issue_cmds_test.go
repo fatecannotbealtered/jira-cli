@@ -370,6 +370,20 @@ func TestIssueGet(t *testing.T) {
 		}
 	})
 
+	t.Run("json flat includes fixVersions", func(t *testing.T) {
+		stdout, _ := issueRunOK(t, "--json", "--compact", "issue", "get", sampleIssueKey)
+		if !strings.Contains(stdout, `"fixVersions":"v1.0"`) {
+			t.Fatalf("expected fixVersions in flat output, got: %s", stdout)
+		}
+	})
+
+	t.Run("json fixVersions selectable via --fields", func(t *testing.T) {
+		stdout, _ := issueRunOK(t, "--json", "--compact", "issue", "get", sampleIssueKey, "--fields", "key,fixversions")
+		if !strings.Contains(stdout, `"fixVersions":"v1.0"`) || strings.Contains(stdout, `"assignee"`) {
+			t.Fatalf("stdout=%q", stdout)
+		}
+	})
+
 	t.Run("expand", func(t *testing.T) {
 		issueRunOK(t, "issue", "get", sampleIssueKey, "--expand", "transitions")
 	})
@@ -682,6 +696,38 @@ func TestIssueTransition(t *testing.T) {
 		stdout, _ := issueRunOK(t, "--json", "issue", "transitions", sampleIssueKey)
 		if !containsAny(stdout, "Start Progress") {
 			t.Fatalf("stdout=%q", stdout)
+		}
+	})
+
+	t.Run("transitions empty text explains", func(t *testing.T) {
+		mockJiraServer(t, func(w http.ResponseWriter, r *http.Request) {
+			if strings.HasSuffix(r.URL.Path, "/transitions") && r.Method == http.MethodGet {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_, _ = fmt.Fprint(w, `{"transitions":[]}`)
+				return
+			}
+			issueMockHandler(t)(w, r)
+		})
+		stdout, _ := issueRunOK(t, "issue", "transitions", sampleIssueKey)
+		if !strings.Contains(stdout, "No transitions available for "+sampleIssueKey) {
+			t.Fatalf("expected empty explanation, got: %s", stdout)
+		}
+	})
+
+	t.Run("transitions empty json stays array", func(t *testing.T) {
+		mockJiraServer(t, func(w http.ResponseWriter, r *http.Request) {
+			if strings.HasSuffix(r.URL.Path, "/transitions") && r.Method == http.MethodGet {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_, _ = fmt.Fprint(w, `{"transitions":[]}`)
+				return
+			}
+			issueMockHandler(t)(w, r)
+		})
+		stdout, _ := issueRunOK(t, "--json", "--compact", "issue", "transitions", sampleIssueKey)
+		if !strings.Contains(stdout, `"data":[]`) {
+			t.Fatalf("expected empty array data, got: %s", stdout)
 		}
 	})
 

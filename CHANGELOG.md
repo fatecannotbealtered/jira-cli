@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.15] - 2026-07-09
+
+### Added
+
+- `issue get` flat output now includes `fixVersions` (comma-joined version names) in the default payload and selectable via `--fields fixversions`, alongside the existing `labels`/`component`. Bulk outputs (`issue list`, `search`, `filter run`, `sprint issues`) carry it too, consistent with `labels`/`component`; it stays omitted when the issue has no fix version. The `issue`/`issue[]` reference schema is updated to match.
+- `project list` gains `--query <substr>` (case-insensitive filter on project key or name) and `--limit <n>` (cap the number of returned projects; `0` = no limit). When `--limit` truncates the set, a one-line warning is written to stderr (stdout JSON stays clean), so a 200+ project instance no longer floods an agent's context by default.
+
+### Changed
+
+- `issue transitions` now prints an explanatory line in `--format text` when no transitions are available ("No transitions available for <KEY> ... terminal state, or you may lack permission"), instead of an empty table. JSON output is unchanged — an empty transition set is still `data: []` — so existing machine consumers are unaffected.
+
 ## [1.1.14] - 2026-07-08
 
 ### Fixed

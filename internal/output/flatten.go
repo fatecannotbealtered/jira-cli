@@ -16,6 +16,7 @@ type FlatIssue struct {
 	Updated     string   `json:"updated,omitempty"`
 	Labels      string   `json:"labels,omitempty"`
 	Component   string   `json:"component,omitempty"`
+	FixVersions string   `json:"fixVersions,omitempty"`
 	Parent      string   `json:"parent,omitempty"`
 	Untrusted   []string `json:"_untrusted,omitempty"`
 }
@@ -63,7 +64,7 @@ func FilterFields(issue FlatIssue, fieldNames []string) map[string]any {
 	result := make(map[string]any, len(fieldNames))
 	included := map[string]bool{}
 	for _, name := range fieldNames {
-		key := strings.TrimSpace(strings.ToLower(name))
+		key := issueCanonicalKey(strings.TrimSpace(strings.ToLower(name)))
 		if v, ok := m[key]; ok {
 			result[key] = v
 			included[key] = true
@@ -80,6 +81,17 @@ func FilterFields(issue FlatIssue, fieldNames []string) map[string]any {
 		result["_untrusted"] = untrusted
 	}
 	return result
+}
+
+// issueCanonicalKey maps a normalized (lowercase) issue field name to its
+// canonical output key. Most issue fields are single lowercase words, so the
+// identity mapping is correct; camelCase keys (e.g. fixVersions) need remapping
+// so --fields lookups match the key used in IssueToMap and the JSON output.
+func issueCanonicalKey(normalized string) string {
+	if normalized == "fixversions" {
+		return "fixVersions"
+	}
+	return normalized
 }
 
 // IssueToMap converts a FlatIssue to a map for field filtering.
@@ -113,6 +125,9 @@ func IssueToMap(issue FlatIssue) map[string]any {
 	}
 	if issue.Component != "" {
 		m["component"] = issue.Component
+	}
+	if issue.FixVersions != "" {
+		m["fixVersions"] = issue.FixVersions
 	}
 	if issue.Parent != "" {
 		m["parent"] = issue.Parent

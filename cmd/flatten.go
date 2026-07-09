@@ -51,6 +51,13 @@ func toFlatIssue(issue *api.Issue) output.FlatIssue {
 	if len(f.Components) > 0 {
 		fi.Component = f.Components[0].Name
 	}
+	if len(f.FixVersions) > 0 {
+		names := make([]string, len(f.FixVersions))
+		for i, v := range f.FixVersions {
+			names[i] = v.Name
+		}
+		fi.FixVersions = strings.Join(names, ",")
+	}
 	if f.Parent != nil {
 		fi.Parent = f.Parent.Key
 	}

@@ -366,8 +366,8 @@ func commandMetaCatalog() map[string]commandMeta {
 func referenceSchemas() map[string]referenceDataSchema {
 	return map[string]referenceDataSchema{
 		// Flattened core resources (cmd/flatten.go, internal/output/flatten.go).
-		"issue":    {Shape: "object", Fields: []string{"key", "summary", "description", "status", "type", "assignee", "reporter", "priority", "created", "updated", "labels", "component", "parent", "_untrusted"}, UntrustedFields: []string{"summary", "description"}},
-		"issue[]":  {Shape: "array", Fields: []string{"key", "summary", "description", "status", "type", "assignee", "reporter", "priority", "created", "updated", "labels", "component", "parent", "_untrusted"}, UntrustedFields: []string{"summary", "description"}},
+		"issue":    {Shape: "object", Fields: []string{"key", "summary", "description", "status", "type", "assignee", "reporter", "priority", "created", "updated", "labels", "component", "fixVersions", "parent", "_untrusted"}, UntrustedFields: []string{"summary", "description"}},
+		"issue[]":  {Shape: "array", Fields: []string{"key", "summary", "description", "status", "type", "assignee", "reporter", "priority", "created", "updated", "labels", "component", "fixVersions", "parent", "_untrusted"}, UntrustedFields: []string{"summary", "description"}},
 		"sprint":   {Shape: "object", Fields: []string{"id", "name", "state", "startDate", "endDate", "goal"}},
 		"sprint[]": {Shape: "array", Fields: []string{"id", "name", "state", "startDate", "endDate", "goal"}},
 		"board":    {Shape: "object", Fields: []string{"id", "name", "type", "projectKey", "displayName"}},

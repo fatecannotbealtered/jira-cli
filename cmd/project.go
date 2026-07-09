@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/fatecannotbealtered/jira-cli/internal/api"
 	"github.com/fatecannotbealtered/jira-cli/internal/output"
@@ -17,6 +18,8 @@ func init() {
 	rootCmd.AddCommand(projectCmd)
 
 	projectListCmd.Flags().String("type", "", "Filter by type (software,business,service_desk)")
+	projectListCmd.Flags().String("query", "", "Filter by case-insensitive substring of project key or name")
+	projectListCmd.Flags().Int("limit", 0, "Max projects to return (0 = no limit)")
 	projectCmd.AddCommand(projectListCmd)
 
 	projectCmd.AddCommand(projectGetCmd)
@@ -36,6 +39,12 @@ var projectListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all projects",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		limit, _ := cmd.Flags().GetInt("limit")
+		if limit < 0 {
+			output.Error("--limit must be >= 0")
+			return SilentErr(ExitBadArgs)
+		}
+
 		client, _, err := newClient()
 		if err != nil {
 			return err
@@ -45,6 +54,24 @@ var projectListCmd = &cobra.Command{
 		if err != nil {
 			return handleAPIError(err, jsonMode)
 		}
+
+		query, _ := cmd.Flags().GetString("query")
+		if query != "" {
+			q := strings.ToLower(query)
+			filtered := projects[:0]
+			for _, p := range projects {
+				if strings.Contains(strings.ToLower(p.Key), q) || strings.Contains(strings.ToLower(p.Name), q) {
+					filtered = append(filtered, p)
+				}
+			}
+			projects = filtered
+		}
+
+		if limit > 0 && len(projects) > limit {
+			output.Warn(fmt.Sprintf("Showing %d of %d matching projects; raise --limit or narrow --query for more.", limit, len(projects)))
+			projects = projects[:limit]
+		}
+
 		if jsonMode {
 			output.PrintJSON(projects)
 			return nil

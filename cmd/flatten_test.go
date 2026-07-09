@@ -19,6 +19,10 @@ func TestToFlatIssue_ReporterAndComponent(t *testing.T) {
 				{Name: "Backend"},
 				{Name: "Ignored"},
 			},
+			FixVersions: []api.Version{
+				{Name: "v1.0"},
+				{Name: "v1.1"},
+			},
 		},
 	}
 	fi := toFlatIssue(issue)
@@ -27,6 +31,9 @@ func TestToFlatIssue_ReporterAndComponent(t *testing.T) {
 	}
 	if fi.Component != "Backend" {
 		t.Errorf("Component = %q, want Backend", fi.Component)
+	}
+	if fi.FixVersions != "v1.0,v1.1" {
+		t.Errorf("FixVersions = %q, want v1.0,v1.1", fi.FixVersions)
 	}
 }
 

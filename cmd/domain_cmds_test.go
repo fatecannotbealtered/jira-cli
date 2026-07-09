@@ -47,7 +47,11 @@ func resetDomainCmdFlags(t *testing.T) {
 		resetFlagValue(cmd.Flags(), "goal", "")
 		resetFlagValue(cmd.Flags(), "project", "")
 		resetFlagValue(cmd.Flags(), "type", "")
-		resetFlagValue(cmd.Flags(), "limit", "50")
+		// Reset "limit" to each command's own default (50 for most; 0 = no limit
+		// for project list), not a hardcoded value that would mask the real default.
+		if lf := cmd.Flags().Lookup("limit"); lf != nil {
+			resetFlagValue(cmd.Flags(), "limit", lf.DefValue)
+		}
 		resetFlagValue(cmd.Flags(), "done", "false")
 		resetFlagValue(cmd.Flags(), "released", "false")
 		resetFlagValue(cmd.Flags(), "unreleased", "false")
@@ -613,6 +617,56 @@ func TestProjectCommands(t *testing.T) {
 		if !strings.Contains(stdout, "PROJ") {
 			t.Fatalf("expected JSON projects, got: %s", stdout)
 		}
+	})
+
+	t.Run("list query filter", func(t *testing.T) {
+		stdout, _ := runRootOKCleanDomain(t, "project", "list", "--query", "ops")
+		if !strings.Contains(stdout, "OPS") || strings.Contains(stdout, "PROJ") {
+			t.Fatalf("expected only OPS by query, got: %s", stdout)
+		}
+	})
+
+	t.Run("list limit caps with warning", func(t *testing.T) {
+		stdout, stderr := runRootOKCleanDomain(t, "project", "list", "--limit", "1")
+		if !strings.Contains(stderr, "Showing 1 of 2") {
+			t.Fatalf("expected cap warning on stderr, got: %s", stderr)
+		}
+		if strings.Contains(stdout, "OPS") {
+			t.Fatalf("expected OPS omitted after --limit 1, got: %s", stdout)
+		}
+	})
+
+	t.Run("list limit json keeps stdout clean", func(t *testing.T) {
+		stdout, stderr := runRootOKCleanDomain(t, "--json", "project", "list", "--limit", "1")
+		// The cap warning must be on stderr only; stdout must stay a parseable envelope.
+		if !strings.Contains(stderr, "Showing 1 of 2") {
+			t.Fatalf("expected cap warning on stderr, got: %s", stderr)
+		}
+		if strings.Contains(stdout, "Showing 1 of 2") {
+			t.Fatalf("warning leaked into stdout JSON: %s", stdout)
+		}
+		var env map[string]any
+		if err := json.Unmarshal([]byte(stdout), &env); err != nil {
+			t.Fatalf("stdout is not valid JSON: %v\n%s", err, stdout)
+		}
+		if env["ok"] != true {
+			t.Fatalf("expected ok:true envelope, got: %s", stdout)
+		}
+		data, ok := env["data"].([]any)
+		if !ok || len(data) != 1 {
+			t.Fatalf("expected 1 project in data, got: %s", stdout)
+		}
+	})
+
+	t.Run("list query no match", func(t *testing.T) {
+		stdout, _ := runRootOKCleanDomain(t, "project", "list", "--query", "zzznope")
+		if !containsAny(stdout, "No projects found") {
+			t.Fatalf("expected empty message for no-match query, got: %s", stdout)
+		}
+	})
+
+	t.Run("list negative limit rejected", func(t *testing.T) {
+		runRootExpectSilentClean(t, ExitBadArgs, "project", "list", "--limit", "-1")
 	})
 
 	t.Run("get table", func(t *testing.T) {
